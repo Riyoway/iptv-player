@@ -142,10 +142,10 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
 
   const languageLabel = (value: LanguagePreference) => {
     if (value === 'system') return t('settings.systemDefault')
-    if (value === 'en') return t('settings.english')
-    if (value === 'ja') return t('settings.japanese')
-    if (value === 'ko') return t('settings.korean')
-    return t('settings.chinese')
+    if (value === 'en') return 'English'
+    if (value === 'ja') return '日本語'
+    if (value === 'ko') return '한국어'
+    return '中文'
   }
 
   const themeLabel = (value: ThemePreference) => {
