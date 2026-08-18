@@ -118,7 +118,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); }
 .search-box input::placeholder { color: #737c83; }
 .search-box button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 22px; }
-.group-strip { display: flex; gap: 8px; overflow-x: auto; padding: 0 14px 12px; scrollbar-width: none; }
+.group-strip { display: flex; gap: 8px; overflow-x: auto; padding: 0 14px 12px; scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch; cursor: grab; user-select: none; }
 .group-strip::-webkit-scrollbar { display: none; }
 .source-picker { position: relative; z-index: 12; padding: 0 14px 12px; }
 .source-picker-trigger { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--muted); cursor: pointer; display: flex; align-items: center; gap: 8px; text-align: left; font-size: 12px; font-weight: 700; }
@@ -146,7 +146,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .source-picker-actions .source-action:hover, .source-picker-actions .source-rename:hover { color: var(--accent); background: rgba(143,227,255,.05); }
 .source-picker-actions .source-delete:hover { color: var(--danger); background: rgba(255,100,100,.06); }
 .source-picker-actions button:disabled { opacity: .55; cursor: wait; }
-.group-strip button { flex: 0 0 auto; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
+.group-strip button { flex: 0 0 auto; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; touch-action: pan-x; display: inline-flex; align-items: center; gap: 6px; }
 .group-strip button.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 
 .channel-list { padding: 2px 8px 10px; max-height: min(70vh, 780px); overflow-y: auto; scrollbar-color: #66747b transparent; scrollbar-width: thin; }
@@ -233,7 +233,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .source-context-menu { position: fixed; z-index: 140; min-width: 172px; padding: 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 15px; background: #171a1c; box-shadow: 0 18px 45px rgba(0,0,0,.42); }
 .source-context-menu button { width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 9px; text-align: left; font-size: 12px; font-weight: 700; }
 .source-context-menu button:hover, .source-context-menu button:focus-visible { background: rgba(143,227,255,.1); color: var(--accent); }
-.toast { position: fixed; z-index: 120; left: 50%; bottom: 28px; transform: translateX(-50%); background: #edf3f5; color: #15191b; border-radius: 999px; padding: 10px 16px; font-size: 12px; font-weight: 750; box-shadow: 0 12px 38px rgba(0,0,0,.35); }
+.toast { position: fixed; z-index: 120; left: 50%; bottom: 28px; max-width: min(90vw, 460px); transform: translateX(-50%); border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 750; text-align: center; box-shadow: 0 12px 38px rgba(0,0,0,.35); backdrop-filter: blur(16px); }
 .bottom-nav, .mobile-fab { display: none; }
 
 @media (max-width: 1100px) {
@@ -310,7 +310,6 @@ html[data-theme="light"] .drop-zone strong { color: var(--text); }
 html[data-theme="light"] .icon-control { color: var(--text); }
 html[data-theme="light"] .icon-control:hover { background: rgba(20,36,43,.08); }
 html[data-theme="light"] .bottom-nav { background: rgba(255,255,255,.9); }
-html[data-theme="light"] .toast { background: #142027; color: #f4f7f8; }
 html[data-theme="light"] .source-legal-note { color: #5e6c73 !important; }
 
 @media (max-width: 720px) {

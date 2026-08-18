@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useHlsPlayer } from '../hooks/useHlsPlayer'
 import { useSettings } from '../lib/i18n'
+import { getChannelGroups } from '../lib/m3u'
 import type { Channel } from '../types/iptv'
 
 const formatTime = (seconds: number) => {
@@ -213,6 +214,7 @@ export function Player({ channel }: { channel?: Channel }) {
   const seekable = Number.isFinite(duration) && duration > 0
   const live = channel && (!seekable || duration === Infinity)
   const playbackError = issue || error
+  const channelGroups = channel ? getChannelGroups(channel) : []
 
   return (
     <section className="player-shell">
@@ -325,7 +327,7 @@ export function Player({ channel }: { channel?: Channel }) {
             <span>{t('player.nowPlaying')}</span>
             <strong>{channel.name}</strong>
           </div>
-          {channel.group && <Chip className="group-pill" size="sm" variant="soft">{channel.group}</Chip>}
+          {channelGroups.length > 0 && <Chip className="group-pill" size="sm" variant="soft">{channelGroups.join(' · ')}</Chip>}
         </div>
       )}
     </section>

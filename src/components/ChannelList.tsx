@@ -1,6 +1,7 @@
 import { Heart, Pencil, Play, Radio, SearchX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { getChannelGroups } from '../lib/m3u'
 import { useSettings } from '../lib/i18n'
 import type { Channel } from '../types/iptv'
 
@@ -45,6 +46,7 @@ export function ChannelList({
       {visible.map((channel) => {
         const active = channel.id === currentId
         const favorite = favorites.has(channel.id)
+        const channelGroups = getChannelGroups(channel)
         return (
           <article
             key={channel.id}
@@ -61,7 +63,7 @@ export function ChannelList({
               </div>
               <div className="channel-copy">
                 <strong>{channel.name}</strong>
-                <span>{channel.group || t('channels.ungrouped')}</span>
+              <span>{channelGroups.join(' · ') || t('channels.ungrouped')}</span>
               </div>
               {active && <span className="playing-badge"><i /> {t('channels.playing')}</span>}
             </button>

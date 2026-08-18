@@ -14,19 +14,21 @@ import {
   Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { ChannelList } from './components/ChannelList'
+import { CategoryIcon } from './components/CategoryIcon'
 import { ImportDialog, type ImportPayload } from './components/ImportDialog'
 import { Player } from './components/Player'
 import { RenameDialog } from './components/RenameDialog'
 import { SettingsDialog } from './components/SettingsDialog'
-import { createImportResult, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
+import { createImportResult, getChannelGroups, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
 import { loadFavorites, loadHistory, loadSources, saveFavorites, saveHistory, saveSources } from './lib/storage'
 import { useSettings } from './lib/i18n'
 import type { Channel, PlaylistSource } from './types/iptv'
 
 type View = 'library' | 'favorites' | 'recent'
 type ChannelContextMenu = { channelId: string; x: number; y: number }
+type GroupStripDrag = { pointerId: number; startX: number; startY: number; startScrollLeft: number; moved: boolean }
 
 const MAX_PLAYLIST_BYTES = 25 * 1024 * 1024
 
@@ -99,6 +101,8 @@ export default function App() {
   const [renameChannelId, setRenameChannelId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const sourceDropdownRef = useRef<HTMLDivElement | null>(null)
+  const groupStripDragRef = useRef<GroupStripDrag | null>(null)
+  const suppressGroupClickRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -168,7 +172,7 @@ export default function App() {
     const channels = sourceFilter === 'all'
       ? allChannels
       : allChannels.filter((channel) => channel.sourceId === sourceFilter)
-    const unique = new Set(channels.map((channel) => channel.group).filter(Boolean) as string[])
+    const unique = new Set(channels.flatMap((channel) => getChannelGroups(channel)))
     return ['All', ...[...unique].sort((a, b) => a.localeCompare(b))]
   }, [allChannels, sourceFilter])
 
@@ -177,13 +181,62 @@ export default function App() {
     if (view === 'favorites') channels = channels.filter((channel) => favorites.has(channel.id))
     if (view === 'recent') channels = history.map((id) => channelMap.get(id)).filter(Boolean) as Channel[]
     if (sourceFilter !== 'all') channels = channels.filter((channel) => channel.sourceId === sourceFilter)
-    if (group !== 'All') channels = channels.filter((channel) => channel.group === group)
+    if (group !== 'All') channels = channels.filter((channel) => getChannelGroups(channel).includes(group))
     if (deferredQuery.trim()) {
       const q = deferredQuery.toLowerCase()
-      channels = channels.filter((channel) => `${channel.name} ${channel.group ?? ''}`.toLowerCase().includes(q))
+      channels = channels.filter((channel) => `${channel.name} ${getChannelGroups(channel).join(' ')}`.toLowerCase().includes(q))
     }
     return channels
   }, [allChannels, channelMap, deferredQuery, favorites, group, history, sourceFilter, view])
+
+  const startGroupStripDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return
+    groupStripDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      moved: false,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const moveGroupStripDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    const drag = groupStripDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const deltaX = event.clientX - drag.startX
+    const deltaY = event.clientY - drag.startY
+    if (!drag.moved && (Math.abs(deltaX) < 4 || Math.abs(deltaX) <= Math.abs(deltaY))) return
+    drag.moved = true
+    event.preventDefault()
+    event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX
+  }
+
+  const endGroupStripDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return
+    const drag = groupStripDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag.moved) suppressGroupClickRef.current = true
+    groupStripDragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  const handleGroupStripWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const strip = event.currentTarget
+    if (strip.scrollWidth <= strip.clientWidth) return
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (!delta) return
+    event.preventDefault()
+    strip.scrollLeft += delta
+  }
+
+  const suppressDraggedGroupClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressGroupClickRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    suppressGroupClickRef.current = false
+  }
 
   const play = (channel: Channel) => {
     setCurrentId(channel.id)
@@ -376,7 +429,6 @@ export default function App() {
       <main className="main-content">
         <header className="top-bar">
           <div>
-            <span className="eyebrow">{t('app.localFirst')}</span>
             <h1>IPTV Player</h1>
           </div>
           <div className="top-actions">
@@ -470,8 +522,17 @@ export default function App() {
             )}
 
             {groups.length > 1 && view === 'library' && (
-              <div className="group-strip" aria-label="Channel groups">
-                {groups.map((item) => <button key={item} className={group === item ? 'active' : ''} onClick={() => setGroup(item)}>{item}</button>)}
+              <div
+                className="group-strip"
+                aria-label="Channel groups"
+                onPointerDown={startGroupStripDrag}
+                onPointerMove={moveGroupStripDrag}
+                onPointerUp={endGroupStripDrag}
+                onPointerCancel={endGroupStripDrag}
+                onWheel={handleGroupStripWheel}
+                onClickCapture={suppressDraggedGroupClick}
+              >
+                {groups.map((item) => <button key={item} className={group === item ? 'active' : ''} onClick={() => setGroup(item)}><CategoryIcon name={item} /><span>{item}</span></button>)}
               </div>
             )}
 

@@ -37,6 +37,11 @@ export const looksLikeM3uPlaylist = (content: string) => {
   })
 }
 
+export const splitGroups = (value?: string) => [...new Set((value ?? '').split(';').map((group) => group.trim()).filter(Boolean))]
+
+export const getChannelGroups = (channel: Pick<Channel, 'group' | 'groups'>) =>
+  channel.groups?.length ? channel.groups : splitGroups(channel.group)
+
 const parseAttributes = (line: string) => {
   const attrs: Record<string, string> = {}
   const matcher = /([\w-]+)=(?:"([^"]*)"|'([^']*)'|([^\s,]*))/g
@@ -79,17 +84,21 @@ export const parseM3u = (content: string, sourceId = makeId('source'), baseUrl?:
     if (line.startsWith('#EXTINF')) {
       const attrs = parseAttributes(line)
       const label = extInfTitle(line)
+      const groups = splitGroups(attrs['group-title'])
       pending = {
         name: attrs['tvg-name'] || label || 'Untitled channel',
         logo: attrs['tvg-logo'] || undefined,
-        group: attrs['group-title'] || undefined,
+        group: groups[0],
+        groups,
         tvgId: attrs['tvg-id'] || undefined,
       }
       continue
     }
 
     if (line.startsWith('#EXTGRP:') && pending) {
-      pending.group = pending.group || line.slice('#EXTGRP:'.length).trim()
+      const groups = splitGroups(line.slice('#EXTGRP:'.length))
+      pending.group = pending.group || groups[0]
+      pending.groups = pending.groups?.length ? pending.groups : groups
       continue
     }
 

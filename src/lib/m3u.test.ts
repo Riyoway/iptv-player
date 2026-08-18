@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createImportResult, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u } from './m3u'
+import { createImportResult, getChannelGroups, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u } from './m3u'
 
 const playlist = `#EXTM3U
 #EXTINF:-1 tvg-id="one" tvg-name="Channel One" tvg-logo="https://example.com/one.png" group-title="News",One
@@ -61,5 +61,10 @@ describe('plain M3U compatibility', () => {
     const content = '#EXTM3U\n#EXTINF:-1,Channel\nlive/channel.m3u8'
     const channels = parseM3u(content, 'relative', 'https://example.com/lists/main.m3u')
     expect(channels[0].url).toBe('https://example.com/lists/live/channel.m3u8')
+  })
+
+  it('splits semicolon-separated categories', () => {
+    const channels = parseM3u('#EXTM3U\n#EXTINF:-1 group-title="Animation; Classic; Movies",Channel\nhttps://example.com/live.m3u8', 'multi')
+    expect(getChannelGroups(channels[0])).toEqual(['Animation', 'Classic', 'Movies'])
   })
 })
