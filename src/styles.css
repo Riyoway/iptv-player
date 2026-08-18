@@ -29,7 +29,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .app-shell { min-height: 100vh; display: flex; }
 .nav-rail { width: 92px; position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; flex-direction: column; align-items: center; padding: 24px 12px; border-right: 1px solid var(--line); background: rgba(13,15,16,.86); backdrop-filter: blur(20px); }
 .brand-mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 18px; overflow: hidden; background: #0d0f10; }
-.brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; transform: scale(1.12); }
 .nav-rail nav { flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .nav-rail nav button { width: 68px; min-height: 64px; border: 0; border-radius: 20px; background: transparent; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 650; transition: .18s ease; }
 .nav-rail nav button:hover { background: rgba(255,255,255,.045); color: var(--text); }
@@ -125,7 +125,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .list-empty strong, .first-run h3 { color: var(--text); margin: 5px 0 0; }
 .list-empty span, .first-run p { max-width: 390px; font-size: 13px; line-height: 1.6; margin: 0; }
 .first-run-icon { width: 72px; height: 72px; display: grid; place-items: center; border-radius: 25px; overflow: hidden; background: #0d0f10; color: var(--accent); margin-bottom: 4px; }
-.first-run-icon img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.first-run-icon img { width: 100%; height: 100%; display: block; object-fit: cover; transform: scale(1.12); }
 .first-run .primary-button { margin-top: 12px; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 18px; background: rgba(0,0,0,.68); backdrop-filter: blur(8px); }
