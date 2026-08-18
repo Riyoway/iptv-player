@@ -153,12 +153,12 @@ export function useHlsPlayer(
     video.addEventListener('stalled', onStalled)
     video.addEventListener('error', onError)
 
-    const nativeHls = video.canPlayType('application/vnd.apple.mpegurl')
     const shouldUseHls = forceHls || /\.m3u8(?:$|[?#])/i.test(src)
+    const nativeHls = video.canPlayType('application/vnd.apple.mpegurl') || video.canPlayType('application/x-mpegURL')
 
-    if (nativeHls && shouldUseHls) {
-      video.src = src
-    } else if (Hls.isSupported() && shouldUseHls) {
+    // Prefer HLS.js when MSE is available. Some mobile Chromium versions report
+    // native HLS support via canPlayType() but fail to play the stream reliably.
+    if (Hls.isSupported() && shouldUseHls) {
       managedByHls = true
       hls = new Hls({
         enableWorker: true,
@@ -213,6 +213,8 @@ export function useHlsPlayer(
         }
         fail(data.details ? `Playback error: ${data.details}` : 'Fatal HLS playback error.')
       })
+    } else if (nativeHls && shouldUseHls) {
+      video.src = src
     } else {
       video.src = src
     }
