@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Tv,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChannelList } from './components/ChannelList'
@@ -257,7 +256,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="nav-rail" aria-label="Primary navigation">
-        <div className="brand-mark"><Tv size={23} /></div>
+        <div className="brand-mark"><img src="/icon-192.png" alt="IPTV Player" /></div>
         <nav>
           <button className={view === 'library' ? 'active' : ''} onClick={() => resetFilters('library')}><ListVideo size={21} /><span>Library</span></button>
           <button className={view === 'favorites' ? 'active' : ''} onClick={() => resetFilters('favorites')}><Heart size={21} /><span>Favorites</span></button>
@@ -325,7 +324,7 @@ export default function App() {
               <div className="list-empty"><span className="loader" /><strong>Loading library</strong></div>
             ) : allChannels.length === 0 ? (
               <div className="first-run">
-                <div className="first-run-icon"><RadioTower size={30} /></div>
+                <div className="first-run-icon"><img src="/icon-192.png" alt="" /></div>
                 <h3>Add your first source</h3>
                 <p>Open an M3U or M3U8 URL, upload an IPTV playlist, or paste playlist text. Your library stays in this browser.</p>
                 <Button className="primary-button" onPress={() => setImportOpen(true)}><Plus size={18} /> Add source</Button>

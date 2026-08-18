@@ -21,14 +21,15 @@
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
-body { min-width: 320px; background: radial-gradient(circle at 70% -10%, rgba(143,227,255,.08), transparent 30rem), #0d0f10; }
+body { min-width: 320px; background: #0d0f10; }
 button, input, textarea { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .app-shell { min-height: 100vh; display: flex; }
 .nav-rail { width: 92px; position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; flex-direction: column; align-items: center; padding: 24px 12px; border-right: 1px solid var(--line); background: rgba(13,15,16,.86); backdrop-filter: blur(20px); }
-.brand-mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 18px; color: var(--accent-ink); background: var(--accent); box-shadow: 0 12px 40px rgba(143,227,255,.12); }
+.brand-mark { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 18px; overflow: hidden; background: #0d0f10; }
+.brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .nav-rail nav { flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .nav-rail nav button { width: 68px; min-height: 64px; border: 0; border-radius: 20px; background: transparent; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 650; transition: .18s ease; }
 .nav-rail nav button:hover { background: rgba(255,255,255,.045); color: var(--text); }
@@ -74,7 +75,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .primary-control { background: rgba(255,255,255,.12); }
 .volume-slider { width: 74px; accent-color: var(--accent); }
 .time-label { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.9); margin-left: 4px; display: inline-flex; align-items: center; gap: 6px; }
-.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5d5d; box-shadow: 0 0 0 4px rgba(255,93,93,.14); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5d5d; }
 
 .now-playing-meta { min-height: 78px; padding: 13px 16px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
 .now-playing-text { min-width: 0; display: flex; flex: 1; flex-direction: column; }
@@ -86,7 +87,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .library-heading { display: flex; justify-content: space-between; align-items: center; padding: 20px 20px 14px; }
 .library-heading h2 { font-size: 22px; }
 .search-box { height: 48px; margin: 0 14px 12px; padding: 0 14px; border: 1px solid var(--line); border-radius: 17px; display: flex; align-items: center; gap: 10px; background: #101315; color: var(--muted); }
-.search-box:focus-within { border-color: rgba(143,227,255,.45); box-shadow: inset 0 0 0 1px rgba(143,227,255,.12); }
+.search-box:focus-within { border-color: rgba(143,227,255,.45); }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); }
 .search-box input::placeholder { color: #737c83; }
 .search-box button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 22px; }
@@ -123,7 +124,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .list-empty, .first-run { display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--muted); padding: 64px 28px; gap: 8px; }
 .list-empty strong, .first-run h3 { color: var(--text); margin: 5px 0 0; }
 .list-empty span, .first-run p { max-width: 390px; font-size: 13px; line-height: 1.6; margin: 0; }
-.first-run-icon { width: 72px; height: 72px; display: grid; place-items: center; border-radius: 25px; background: rgba(143,227,255,.1); color: var(--accent); margin-bottom: 4px; }
+.first-run-icon { width: 72px; height: 72px; display: grid; place-items: center; border-radius: 25px; overflow: hidden; background: #0d0f10; color: var(--accent); margin-bottom: 4px; }
+.first-run-icon img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .first-run .primary-button { margin-top: 12px; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 18px; background: rgba(0,0,0,.68); backdrop-filter: blur(8px); }

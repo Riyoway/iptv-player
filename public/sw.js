@@ -1,4 +1,4 @@
-const CACHE = 'iptv-player-shell-v1'
+const CACHE = 'iptv-player-shell-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => {
