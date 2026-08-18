@@ -40,6 +40,9 @@ export function useHlsPlayer(
     let recoveryAttempts = 0
     let nativeStallTimer: number | undefined
     let nativeRecoveryAttempts = 0
+    let nativeFallbackTimer: number | undefined
+    let nativeReady = false
+    let hlsStarted = false
 
     const clearRecoveryTimer = () => {
       if (recoveryTimer !== undefined) {
@@ -52,6 +55,13 @@ export function useHlsPlayer(
       if (nativeStallTimer !== undefined) {
         window.clearTimeout(nativeStallTimer)
         nativeStallTimer = undefined
+      }
+    }
+
+    const clearNativeFallbackTimer = () => {
+      if (nativeFallbackTimer !== undefined) {
+        window.clearTimeout(nativeFallbackTimer)
+        nativeFallbackTimer = undefined
       }
     }
 
@@ -127,39 +137,17 @@ export function useHlsPlayer(
       }, recoveryDelay(attempt))
     }
 
-    setError(null)
-    setStatus('loading')
-
-    const onReady = () => !disposed && setStatus('ready')
-    const onPlaying = () => {
-      if (disposed) return
-      clearNativeStallTimer()
-      recoveryAttempts = 0
-      nativeRecoveryAttempts = 0
-      setStatus('ready')
-      setError(null)
-    }
-    const onWaiting = () => scheduleNativeRecovery()
-    const onStalled = () => scheduleNativeRecovery()
-    const onError = () => {
-      if (managedByHls) scheduleHlsRecovery('media', 'VIDEO_ERROR')
-      else scheduleNativeRecovery(true)
-    }
-
-    video.addEventListener('loadedmetadata', onReady)
-    video.addEventListener('canplay', onReady)
-    video.addEventListener('playing', onPlaying)
-    video.addEventListener('waiting', onWaiting)
-    video.addEventListener('stalled', onStalled)
-    video.addEventListener('error', onError)
-
     const shouldUseHls = forceHls || /\.m3u8(?:$|[?#])/i.test(src)
     const nativeHls = video.canPlayType('application/vnd.apple.mpegurl') || video.canPlayType('application/x-mpegURL')
+    const hlsSupported = Hls.isSupported() && shouldUseHls
 
-    // Prefer HLS.js when MSE is available. Some mobile Chromium versions report
-    // native HLS support via canPlayType() but fail to play the stream reliably.
-    if (Hls.isSupported() && shouldUseHls) {
+    const startHlsPlayback = () => {
+      if (disposed || hlsStarted || !hlsSupported) return false
+
+      clearNativeFallbackTimer()
+      hlsStarted = true
       managedByHls = true
+      setRecovering()
       hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -191,18 +179,20 @@ export function useHlsPlayer(
           },
         },
       })
-      hls.attachMedia(video)
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(src))
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+
+      const currentHls = hls
+      currentHls.attachMedia(video)
+      currentHls.on(Hls.Events.MEDIA_ATTACHED, () => currentHls.loadSource(src))
+      currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
         recoveryAttempts = 0
         if (!disposed) setStatus('ready')
       })
-      hls.on(Hls.Events.FRAG_LOADED, () => {
+      currentHls.on(Hls.Events.FRAG_LOADED, () => {
         recoveryAttempts = 0
         if (!disposed) setError(null)
       })
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal || !hls) return
+      currentHls.on(Hls.Events.ERROR, (_event, data) => {
+        if (disposed || currentHls !== hls || !data.fatal) return
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
           scheduleHlsRecovery('network', data.details)
           return
@@ -213,18 +203,60 @@ export function useHlsPlayer(
         }
         fail(data.details ? `Playback error: ${data.details}` : 'Fatal HLS playback error.')
       })
-    } else if (nativeHls && shouldUseHls) {
-      video.src = src
-    } else {
-      video.src = src
+      return true
     }
 
-    if (!managedByHls) video.load()
+    setError(null)
+    setStatus('loading')
+
+    const onReady = () => {
+      if (disposed) return
+      nativeReady = true
+      setStatus('ready')
+    }
+    const onPlaying = () => {
+      if (disposed) return
+      clearNativeStallTimer()
+      recoveryAttempts = 0
+      nativeRecoveryAttempts = 0
+      setStatus('ready')
+      setError(null)
+    }
+    const onWaiting = () => scheduleNativeRecovery()
+    const onStalled = () => scheduleNativeRecovery()
+    const onError = () => {
+      if (managedByHls) scheduleHlsRecovery('media', 'VIDEO_ERROR')
+      else if (!startHlsPlayback()) scheduleNativeRecovery(true)
+    }
+
+    video.addEventListener('loadedmetadata', onReady)
+    video.addEventListener('canplay', onReady)
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('waiting', onWaiting)
+    video.addEventListener('stalled', onStalled)
+    video.addEventListener('error', onError)
+
+    if (nativeHls && shouldUseHls) {
+      video.src = src
+      video.load()
+      if (hlsSupported) {
+        nativeFallbackTimer = window.setTimeout(() => {
+          nativeFallbackTimer = undefined
+          if (!nativeReady && !managedByHls) startHlsPlayback()
+        }, 8000)
+      }
+    } else if (hlsSupported) {
+      startHlsPlayback()
+    } else {
+      video.src = src
+      video.load()
+    }
 
     return () => {
       disposed = true
       clearRecoveryTimer()
       clearNativeStallTimer()
+      clearNativeFallbackTimer()
       video.pause()
       video.removeAttribute('src')
       video.load()
