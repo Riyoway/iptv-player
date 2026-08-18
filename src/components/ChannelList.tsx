@@ -1,4 +1,4 @@
-import { Heart, Pencil, Play, Radio, SearchX } from 'lucide-react'
+import { CircleCheck, CircleHelp, CircleX, Heart, Pencil, Play, Radio, SearchX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { getChannelGroups } from '../lib/m3u'
@@ -62,7 +62,14 @@ export function ChannelList({
                 <span className="play-overlay"><Play size={17} fill="currentColor" /></span>
               </div>
               <div className="channel-copy">
-                <strong>{channel.name}</strong>
+                <strong>
+                  {channel.name}
+                  {channel.streamCheck && (
+                    <span className={`stream-status ${channel.streamCheck.status}`} title={channel.streamCheck.detail} aria-label={t(`channels.stream${channel.streamCheck.status === 'available' ? 'Available' : channel.streamCheck.status === 'unavailable' ? 'Unavailable' : 'Unverified'}`)}>
+                      {channel.streamCheck.status === 'available' ? <CircleCheck size={14} /> : channel.streamCheck.status === 'unavailable' ? <CircleX size={14} /> : <CircleHelp size={14} />}
+                    </span>
+                  )}
+                </strong>
               <span>{channelGroups.join(' · ') || t('channels.ungrouped')}</span>
               </div>
               {active && <span className="playing-badge"><i /> {t('channels.playing')}</span>}

@@ -8,6 +8,13 @@ export type Channel = {
   tvgId?: string
   sourceId?: string
   streamType?: 'hls' | 'direct'
+  streamCheck?: StreamCheckResult
+}
+
+export type StreamCheckResult = {
+  status: 'available' | 'unavailable' | 'unknown'
+  checkedAt: number
+  detail?: string
 }
 
 export type PlaylistSource = {

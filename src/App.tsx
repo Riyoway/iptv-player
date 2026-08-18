@@ -22,7 +22,8 @@ import { Player } from './components/Player'
 import { RenameDialog } from './components/RenameDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { createImportResult, getChannelGroups, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
-import { loadFavorites, loadHistory, loadSources, saveFavorites, saveHistory, saveSources } from './lib/storage'
+import { checkStreams } from './lib/streamChecker'
+import { loadFavorites, loadHideInvalidStreams, loadHistory, loadSources, saveFavorites, saveHideInvalidStreams, saveHistory, saveSources } from './lib/storage'
 import { useSettings } from './lib/i18n'
 import type { Channel, PlaylistSource } from './types/iptv'
 
@@ -100,9 +101,12 @@ export default function App() {
   const [renameSourceId, setRenameSourceId] = useState<string | null>(null)
   const [renameChannelId, setRenameChannelId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [hideInvalidStreams, setHideInvalidStreams] = useState(() => loadHideInvalidStreams())
+  const [streamCheckProgress, setStreamCheckProgress] = useState<{ completed: number; total: number } | null>(null)
   const sourceDropdownRef = useRef<HTMLDivElement | null>(null)
   const groupStripDragRef = useRef<GroupStripDrag | null>(null)
   const suppressGroupClickRef = useRef(false)
+  const streamCheckAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -120,6 +124,8 @@ export default function App() {
   }, [sources, storageReady])
   useEffect(() => saveFavorites(favorites), [favorites])
   useEffect(() => saveHistory(history), [history])
+  useEffect(() => saveHideInvalidStreams(hideInvalidStreams), [hideInvalidStreams])
+  useEffect(() => () => streamCheckAbortRef.current?.abort(), [])
 
   useEffect(() => {
     if (!channelContextMenu) return
@@ -178,6 +184,7 @@ export default function App() {
 
   const visibleChannels = useMemo(() => {
     let channels = allChannels
+    if (hideInvalidStreams) channels = channels.filter((channel) => channel.streamCheck?.status !== 'unavailable')
     if (view === 'favorites') channels = channels.filter((channel) => favorites.has(channel.id))
     if (view === 'recent') channels = history.map((id) => channelMap.get(id)).filter(Boolean) as Channel[]
     if (sourceFilter !== 'all') channels = channels.filter((channel) => channel.sourceId === sourceFilter)
@@ -187,7 +194,9 @@ export default function App() {
       channels = channels.filter((channel) => `${channel.name} ${getChannelGroups(channel).join(' ')}`.toLowerCase().includes(q))
     }
     return channels
-  }, [allChannels, channelMap, deferredQuery, favorites, group, history, sourceFilter, view])
+  }, [allChannels, channelMap, deferredQuery, favorites, group, hideInvalidStreams, history, sourceFilter, view])
+
+  const hiddenInvalidCount = useMemo(() => allChannels.filter((channel) => channel.streamCheck?.status === 'unavailable').length, [allChannels])
 
   const startGroupStripDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return
@@ -341,6 +350,55 @@ export default function App() {
     }
   }
 
+  const stopStreamCheck = () => {
+    streamCheckAbortRef.current?.abort()
+  }
+
+  const checkAllStreams = async () => {
+    if (streamCheckAbortRef.current) return
+    if (!allChannels.length) {
+      setToast(t('settings.checkNoStreams'))
+      window.setTimeout(() => setToast(null), 2200)
+      return
+    }
+
+    const controller = new AbortController()
+    streamCheckAbortRef.current = controller
+    const total = allChannels.length
+    let available = 0
+    setStreamCheckProgress({ completed: 0, total })
+
+    try {
+      await checkStreams(
+        allChannels.map((channel) => ({ id: channel.id, url: channel.url })),
+        {
+          concurrency: 4,
+          timeoutMs: 10000,
+          signal: controller.signal,
+          onProgress: ({ completed, id, result }) => {
+            if (result.status === 'available') available += 1
+            setSources((previous) => previous.map((source) => {
+              if (!source.channels.some((channel) => channel.id === id)) return source
+              return {
+                ...source,
+                channels: source.channels.map((channel) => channel.id === id ? { ...channel, streamCheck: result } : channel),
+              }
+            }))
+            setStreamCheckProgress({ completed, total })
+          },
+        },
+      )
+      setToast(t('toast.streamCheckComplete', { total, available }))
+    } catch (error) {
+      if (controller.signal.aborted) setToast(t('toast.streamCheckCancelled'))
+      else setToast(error instanceof Error ? error.message : t('errors.streamCheck'))
+    } finally {
+      streamCheckAbortRef.current = null
+      setStreamCheckProgress(null)
+      window.setTimeout(() => setToast(null), 2600)
+    }
+  }
+
   const removeSource = (id: string) => {
     const source = sources.find((item) => item.id === id)
     if (!source) return
@@ -448,7 +506,10 @@ export default function App() {
                 <span className="eyebrow">{t(`views.${view}`)}</span>
                 <h2>{view === 'library' ? t('headings.channels') : view === 'favorites' ? t('headings.favorites') : t('headings.recent')}</h2>
               </div>
-              <Chip className="count-chip" size="sm" variant="soft">{visibleChannels.length.toLocaleString()}</Chip>
+              <div className="library-heading-meta">
+                <Chip className="count-chip" size="sm" variant="soft">{visibleChannels.length.toLocaleString()}</Chip>
+                {hideInvalidStreams && hiddenInvalidCount > 0 && <span className="hidden-invalid-note">{t('channels.hiddenInvalid', { count: hiddenInvalidCount })}</span>}
+              </div>
             </div>
 
             <label className="search-box">
@@ -466,10 +527,10 @@ export default function App() {
                   aria-expanded={sourceDropdownOpen}
                   onClick={() => setSourceDropdownOpen((open) => !open)}
                 >
-                  {selectedSource ? (selectedSource.kind === 'playlist' ? <ListVideo size={16} /> : <RadioTower size={16} />) : <ListVideo size={16} />}
+                  {selectedSource ? (selectedSource.kind === 'playlist' ? <ListVideo size={18} /> : <RadioTower size={18} />) : <ListVideo size={18} />}
                   <span>{selectedSource?.name ?? t('source.all')}</span>
                   <em>{selectedSource ? (selectedSource.kind === 'playlist' ? selectedSource.channels.length : '1') : allChannels.length}</em>
-                  <ChevronDown className="source-picker-chevron" size={17} />
+                  <ChevronDown className="source-picker-chevron" size={18} />
                 </button>
 
                 {sourceDropdownOpen && (
@@ -481,7 +542,7 @@ export default function App() {
                       aria-checked={sourceFilter === 'all'}
                       onClick={() => selectSource('all')}
                     >
-                      <ListVideo size={16} />
+                      <ListVideo size={17} />
                       <span>{t('source.all')}</span>
                       <em>{allChannels.length}</em>
                       {sourceFilter === 'all' && <Check className="source-picker-check" size={16} />}
@@ -496,7 +557,7 @@ export default function App() {
                           aria-checked={sourceFilter === source.id}
                           onClick={() => selectSource(source.id)}
                         >
-                          {source.kind === 'playlist' ? <ListVideo size={16} /> : <RadioTower size={16} />}
+                          {source.kind === 'playlist' ? <ListVideo size={17} /> : <RadioTower size={17} />}
                           <span>{source.name}</span>
                           <em>{source.kind === 'playlist' ? source.channels.length : '1'}</em>
                           {sourceFilter === source.id && <Check className="source-picker-check" size={16} />}
@@ -584,7 +645,15 @@ export default function App() {
         onClose={() => setRenameSourceId(null)}
         onRename={(name) => renameSourceId && renameSource(renameSourceId, name)}
       />
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        hideInvalidStreams={hideInvalidStreams}
+        onHideInvalidStreamsChange={setHideInvalidStreams}
+        checkProgress={streamCheckProgress}
+        onCheckStreams={() => { void checkAllStreams() }}
+        onCancelCheck={stopStreamCheck}
+      />
       <RenameDialog
         open={renameChannelId !== null}
         currentName={channelMap.get(renameChannelId ?? '')?.name ?? ''}

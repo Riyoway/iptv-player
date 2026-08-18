@@ -1,5 +1,5 @@
 import { Button } from '@heroui/react'
-import { Check, ChevronDown, Languages, Monitor, Moon, Settings as SettingsIcon, Sun, X } from 'lucide-react'
+import { Check, ChevronDown, EyeOff, Languages, Monitor, Moon, ScanSearch, Settings as SettingsIcon, Sun, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSettings, languageOptions, themeOptions, type LanguagePreference, type ThemePreference } from '../lib/i18n'
 
@@ -126,7 +126,25 @@ function SettingsSelect<T extends string>({
   )
 }
 
-export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+type StreamCheckProgress = { completed: number; total: number } | null
+
+export function SettingsDialog({
+  open,
+  onClose,
+  hideInvalidStreams,
+  onHideInvalidStreamsChange,
+  checkProgress,
+  onCheckStreams,
+  onCancelCheck,
+}: {
+  open: boolean
+  onClose: () => void
+  hideInvalidStreams: boolean
+  onHideInvalidStreamsChange: (value: boolean) => void
+  checkProgress: StreamCheckProgress
+  onCheckStreams: () => void
+  onCancelCheck: () => void
+}) {
   const { languagePreference, themePreference, setLanguagePreference, setThemePreference, t } = useSettings()
 
   useEffect(() => {
@@ -197,6 +215,29 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
               onChange={setThemePreference}
               ariaLabel={t('settings.theme')}
             />
+          </div>
+
+          <div className="settings-row settings-row-toggle">
+            <div className="settings-row-icon"><EyeOff size={19} /></div>
+            <div className="settings-row-copy">
+              <label htmlFor="settings-hide-invalid">{t('settings.hideInvalidStreams')}</label>
+              <p>{t('settings.hideInvalidStreamsHint')}</p>
+            </div>
+            <label className="settings-toggle" htmlFor="settings-hide-invalid">
+              <input id="settings-hide-invalid" type="checkbox" checked={hideInvalidStreams} onChange={(event) => onHideInvalidStreamsChange(event.target.checked)} />
+              <span className="settings-toggle-track" aria-hidden="true"><span /></span>
+            </label>
+          </div>
+
+          <div className="settings-row settings-row-action">
+            <div className="settings-row-icon"><ScanSearch size={19} /></div>
+            <div className="settings-row-copy">
+              <label>{t('settings.checkStreams')}</label>
+              <p>{checkProgress ? t('settings.checkingStreams', checkProgress) : t('settings.checkStreamsHint')}</p>
+            </div>
+            <Button className="secondary-button settings-action-button" onPress={checkProgress ? onCancelCheck : onCheckStreams}>
+              {checkProgress ? <><span className="button-loader" /> {t('settings.cancelCheck')}</> : <><ScanSearch size={16} /> {t('settings.check')}</>}
+            </Button>
           </div>
         </div>
 

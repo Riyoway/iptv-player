@@ -9,6 +9,7 @@ const KEYS = {
   legacySources: 'iptv-player:sources:v1',
   favorites: 'iptv-player:favorites:v1',
   history: 'iptv-player:history:v1',
+  hideInvalidStreams: 'iptv-player:hide-invalid-streams:v1',
 }
 
 const safeGet = (key: string) => {
@@ -98,3 +99,6 @@ export const saveFavorites = (favorites: Set<string>) =>
 
 export const loadHistory = () => safeParse<string[]>(safeGet(KEYS.history), [])
 export const saveHistory = (history: string[]) => safeSet(KEYS.history, JSON.stringify(history.slice(0, 30)))
+
+export const loadHideInvalidStreams = () => safeGet(KEYS.hideInvalidStreams) === 'true'
+export const saveHideInvalidStreams = (value: boolean) => safeSet(KEYS.hideInvalidStreams, String(value))
