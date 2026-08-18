@@ -95,11 +95,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .source-strip::-webkit-scrollbar, .group-strip::-webkit-scrollbar { display: none; }
 .source-chip-wrap { flex: 0 0 auto; display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface-2); }
 .source-chip-wrap.active { border-color: rgba(143,227,255,.28); background: rgba(143,227,255,.09); }
-.source-chip-main { height: 38px; padding: 0 10px; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+.source-chip-main { height: 44px; padding: 0 10px; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
 .source-chip-main span { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-chip-main em { font-style: normal; color: var(--muted); font-size: 10px; }
-.source-delete { width: 34px; border: 0; border-left: 1px solid var(--line); background: transparent; color: #7e878d; cursor: pointer; display: grid; place-items: center; }
+.source-delete, .source-menu { width: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; color: #7e878d; cursor: pointer; display: grid; place-items: center; }
 .source-delete:hover { color: var(--danger); background: rgba(255,100,100,.06); }
+.source-menu:hover { color: var(--accent); background: rgba(143,227,255,.05); }
 .group-strip button { flex: 0 0 auto; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
 .group-strip button.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 
@@ -140,6 +141,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .segmented-control button.active { background: var(--surface-3); color: white; }
 .field-stack { display: flex; flex-direction: column; gap: 8px; }
 .field-stack label { font-size: 12px; font-weight: 700; }
+.field-stack label span { color: var(--muted); font-weight: 500; }
+.source-name-field { margin-bottom: 20px; }
 .field-stack p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .text-input { width: 100%; min-height: 50px; border: 1px solid var(--line); border-radius: 16px; background: #0f1112; color: white; padding: 0 14px; outline: none; }
 .text-area { min-height: 165px; resize: vertical; padding: 13px 14px; line-height: 1.5; }
@@ -152,6 +155,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .drop-icon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 18px; color: var(--accent); background: rgba(143,227,255,.09); margin-bottom: 4px; }
 .dialog-error { margin-top: 14px; border-radius: 14px; padding: 11px 12px; background: rgba(255,91,91,.09); color: #ffb3b3; font-size: 12px; line-height: 1.5; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.rename-dialog { width: min(460px, 100%); }
+.source-context-menu { position: fixed; z-index: 140; min-width: 172px; padding: 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 15px; background: #171a1c; box-shadow: 0 18px 45px rgba(0,0,0,.42); }
+.source-context-menu button { width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 9px; text-align: left; font-size: 12px; font-weight: 700; }
+.source-context-menu button:hover, .source-context-menu button:focus-visible { background: rgba(143,227,255,.1); color: var(--accent); }
 .toast { position: fixed; z-index: 120; left: 50%; bottom: 28px; transform: translateX(-50%); background: #edf3f5; color: #15191b; border-radius: 999px; padding: 10px 16px; font-size: 12px; font-weight: 750; box-shadow: 0 12px 38px rgba(0,0,0,.35); }
 .bottom-nav, .mobile-fab { display: none; }
 
@@ -211,9 +218,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .load-more { width: calc(100% - 16px); margin: 8px; min-height: 48px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 12px; font-weight: 750; }
 .load-more:hover { background: var(--surface-3); }
 .load-more span { color: var(--muted); font-size: 10px; font-weight: 650; }
-.source-strip > button { flex: 0 0 auto; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 700; }
+.source-strip > button { flex: 0 0 auto; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 700; }
 .source-strip > button.active { background: rgba(143,227,255,.1); border-color: rgba(143,227,255,.28); color: var(--accent); }
-.source-action { width: 34px; border: 0; border-left: 1px solid var(--line); background: transparent; color: #8d969c; cursor: pointer; display: grid; place-items: center; }
+.source-action { width: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; color: #8d969c; cursor: pointer; display: grid; place-items: center; }
 .source-action:hover { color: var(--accent); background: rgba(143,227,255,.05); }
 .spinning { animation: spin .8s linear infinite; }
 .source-action:disabled, .mobile-fab:disabled { opacity: .55; cursor: wait; }

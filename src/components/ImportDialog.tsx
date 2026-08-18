@@ -3,9 +3,9 @@ import { FileUp, Link2, ListVideo, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export type ImportPayload =
-  | { type: 'url'; value: string }
-  | { type: 'file'; file: File }
-  | { type: 'text'; value: string }
+  | { type: 'url'; value: string; name?: string }
+  | { type: 'file'; file: File; name?: string }
+  | { type: 'text'; value: string; name?: string }
 
 export function ImportDialog({
   open,
@@ -23,7 +23,18 @@ export function ImportDialog({
   const [mode, setMode] = useState<'url' | 'file' | 'text'>('url')
   const [url, setUrl] = useState('')
   const [text, setText] = useState('')
+  const [name, setName] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setMode('url')
+    setUrl('')
+    setText('')
+    setName('')
+    setSelectedFile(null)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -35,6 +46,24 @@ export function ImportDialog({
   }, [busy, onClose, open])
 
   if (!open) return null
+
+  const selectFile = (file: File | undefined) => {
+    if (!file) return
+    setSelectedFile(file)
+    setName((current) => current.trim() ? current : file.name.replace(/\.m3u8?$/i, ''))
+  }
+
+  const submit = () => {
+    if (mode === 'url') {
+      void onImport({ type: 'url', value: url.trim(), name: name.trim() })
+      return
+    }
+    if (mode === 'text') {
+      void onImport({ type: 'text', value: text, name: name.trim() })
+      return
+    }
+    if (selectedFile) void onImport({ type: 'file', file: selectedFile, name: name.trim() })
+  }
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -52,6 +81,12 @@ export function ImportDialog({
           <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><Link2 size={17} /> URL</button>
           <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><FileUp size={17} /> File</button>
           <button className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')}><ListVideo size={17} /> Text</button>
+        </div>
+
+        <div className="field-stack source-name-field">
+          <label htmlFor="source-name">Source name <span>(optional)</span></label>
+          <Input id="source-name" className="text-input" value={name} onChange={(event) => setName(event.target.value)} placeholder={mode === 'file' ? 'Playlist name' : mode === 'text' ? 'Pasted playlist' : 'Playlist or stream name'} fullWidth variant="secondary" />
+          <p>This name is shown in your library and can be changed later.</p>
         </div>
 
         {mode === 'url' && (
@@ -79,13 +114,12 @@ export function ImportDialog({
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault()
-                const file = event.dataTransfer.files?.[0]
-                if (file) void onImport({ type: 'file', file })
+                selectFile(event.dataTransfer.files?.[0])
               }}
             >
               <span className="drop-icon"><FileUp size={24} /></span>
-              <strong>Drop or choose a playlist</strong>
-              <span>.m3u or .m3u8 · parsed locally in your browser</span>
+              <strong>{selectedFile ? selectedFile.name : 'Drop or choose a playlist'}</strong>
+              <span>{selectedFile ? 'Ready to import · choose another file to replace it' : '.m3u or .m3u8 · parsed locally in your browser'}</span>
             </div>
             <input
               ref={fileRef}
@@ -93,8 +127,7 @@ export function ImportDialog({
               type="file"
               accept=".m3u,.m3u8,application/vnd.apple.mpegurl,audio/x-mpegurl"
               onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void onImport({ type: 'file', file })
+                selectFile(event.target.files?.[0])
               }}
             />
           </>
@@ -112,16 +145,14 @@ export function ImportDialog({
 
         <footer className="dialog-footer">
           <Button className="secondary-button" onPress={onClose}>Cancel</Button>
-          {mode !== 'file' && (
-            <Button
-              className="primary-button"
-              isDisabled={busy || (mode === 'url' ? !url.trim() : !text.trim())}
-              onPress={() => void onImport(mode === 'url' ? { type: 'url', value: url.trim() } : { type: 'text', value: text })}
-            >
-              {busy ? <span className="button-loader" /> : <Link2 size={17} />}
-              {busy ? 'Adding…' : 'Add source'}
-            </Button>
-          )}
+          <Button
+            className="primary-button"
+            isDisabled={busy || (mode === 'url' ? !url.trim() : mode === 'text' ? !text.trim() : !selectedFile)}
+            onPress={submit}
+          >
+            {busy ? <span className="button-loader" /> : <Link2 size={17} />}
+            {busy ? 'Adding…' : 'Add source'}
+          </Button>
         </footer>
       </section>
     </div>

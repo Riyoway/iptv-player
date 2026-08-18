@@ -3,21 +3,25 @@ import {
   Clock3,
   Heart,
   ListVideo,
+  MoreHorizontal,
+  Pencil,
   Plus,
   RadioTower,
   RefreshCw,
   Search,
   Trash2,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { ChannelList } from './components/ChannelList'
 import { ImportDialog, type ImportPayload } from './components/ImportDialog'
 import { Player } from './components/Player'
+import { RenameDialog } from './components/RenameDialog'
 import { createImportResult, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
 import { loadFavorites, loadHistory, loadSources, saveFavorites, saveHistory, saveSources } from './lib/storage'
 import type { Channel, PlaylistSource } from './types/iptv'
 
 type View = 'library' | 'favorites' | 'recent'
+type SourceContextMenu = { sourceId: string; x: number; y: number }
 
 const MAX_PLAYLIST_BYTES = 25 * 1024 * 1024
 
@@ -83,6 +87,8 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null)
+  const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenu | null>(null)
+  const [renameSourceId, setRenameSourceId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -100,6 +106,27 @@ export default function App() {
   }, [sources, storageReady])
   useEffect(() => saveFavorites(favorites), [favorites])
   useEffect(() => saveHistory(history), [history])
+
+  useEffect(() => {
+    if (!sourceContextMenu) return
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-source-context-menu]')) return
+      setSourceContextMenu(null)
+    }
+    const closeOnKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSourceContextMenu(null)
+    }
+    const closeOnScroll = () => setSourceContextMenu(null)
+    document.addEventListener('pointerdown', closeOnPointerDown)
+    document.addEventListener('keydown', closeOnKeyDown)
+    window.addEventListener('scroll', closeOnScroll, true)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown)
+      document.removeEventListener('keydown', closeOnKeyDown)
+      window.removeEventListener('scroll', closeOnScroll, true)
+    }
+  }, [sourceContextMenu])
 
   const allChannels = useMemo(() => sources.flatMap((source) => source.channels), [sources])
   const channelMap = useMemo(() => new Map(allChannels.map((channel) => [channel.id, channel])), [allChannels])
@@ -178,7 +205,7 @@ export default function App() {
         }
 
         const result = createImportResult({
-          name: titleFromUrl(url),
+          name: payload.name?.trim() || titleFromUrl(url),
           content: content && (looksLikeM3uPlaylist(content) || looksLikeHlsManifest(content)) ? content : undefined,
           url,
           origin: 'url',
@@ -194,7 +221,7 @@ export default function App() {
           throw new Error('This is a standalone HLS manifest. Open its original M3U8 URL so relative media segments keep working.')
         }
         if (!looksLikeM3uPlaylist(content)) throw new Error('No IPTV playlist entries were found in this file.')
-        const result = createImportResult({ name: payload.file.name.replace(/\.m3u8?$/i, ''), content, origin: 'file' })
+        const result = createImportResult({ name: payload.name?.trim() || payload.file.name.replace(/\.m3u8?$/i, ''), content, origin: 'file' })
         addSource(result.source)
         return
       }
@@ -203,7 +230,7 @@ export default function App() {
         if (looksLikeHlsManifest(payload.value)) throw new Error('Paste the original M3U8 URL for standalone HLS manifests.')
         throw new Error('The pasted text does not look like an IPTV M3U playlist.')
       }
-      const result = createImportResult({ name: 'Pasted playlist', content: payload.value, origin: 'text' })
+      const result = createImportResult({ name: payload.name?.trim() || 'Pasted playlist', content: payload.value, origin: 'text' })
       addSource(result.source)
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Could not add this source.')
@@ -242,7 +269,29 @@ export default function App() {
       setSourceFilter('all')
       setGroup('All')
     }
+    if (sourceContextMenu?.sourceId === id) setSourceContextMenu(null)
+    if (renameSourceId === id) setRenameSourceId(null)
     setToast('Source removed')
+    window.setTimeout(() => setToast(null), 1800)
+  }
+
+  const openSourceContextMenu = (event: ReactMouseEvent, sourceId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setSourceContextMenu({ sourceId, x: event.clientX, y: event.clientY })
+  }
+
+  const openRenameDialog = (sourceId: string) => {
+    setSourceContextMenu(null)
+    setRenameSourceId(sourceId)
+  }
+
+  const renameSource = (sourceId: string, name: string) => {
+    const nextName = name.trim()
+    if (!nextName) return
+    setSources((previous) => previous.map((source) => source.id === sourceId ? { ...source, name: nextName } : source))
+    setRenameSourceId(null)
+    setToast('Source renamed')
     window.setTimeout(() => setToast(null), 1800)
   }
 
@@ -297,7 +346,11 @@ export default function App() {
               <div className="source-strip" aria-label="Sources">
                 <button className={sourceFilter === 'all' ? 'active' : ''} onClick={() => { setSourceFilter('all'); setGroup('All') }}>All sources</button>
                 {sources.map((source) => (
-                  <div key={source.id} className={`source-chip-wrap ${sourceFilter === source.id ? 'active' : ''}`}>
+                  <div
+                    key={source.id}
+                    className={`source-chip-wrap ${sourceFilter === source.id ? 'active' : ''}`}
+                    onContextMenu={(event) => openSourceContextMenu(event, source.id)}
+                  >
                     <button className="source-chip-main" onClick={() => { setSourceFilter(source.id); setGroup('All') }}>
                       {source.kind === 'playlist' ? <ListVideo size={15} /> : <RadioTower size={15} />}
                       <span>{source.name}</span>
@@ -308,6 +361,9 @@ export default function App() {
                         <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
                       </button>
                     )}
+                    <button className="source-menu" onClick={(event) => openSourceContextMenu(event, source.id)} aria-label={`More actions for ${source.name}`} aria-haspopup="menu" aria-expanded={sourceContextMenu?.sourceId === source.id}>
+                      <MoreHorizontal size={16} />
+                    </button>
                     <button className="source-delete" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.name}`}><Trash2 size={14} /></button>
                   </div>
                 ))}
@@ -343,7 +399,28 @@ export default function App() {
         <button className={view === 'recent' ? 'active' : ''} onClick={() => resetFilters('recent')}><Clock3 size={20} /><span>Recent</span></button>
       </nav>
 
+      {sourceContextMenu && sources.some((source) => source.id === sourceContextMenu.sourceId) && (
+        <div
+          className="source-context-menu"
+          data-source-context-menu
+          role="menu"
+          style={{
+            left: Math.min(sourceContextMenu.x, Math.max(8, window.innerWidth - 180)),
+            top: Math.min(sourceContextMenu.y, Math.max(8, window.innerHeight - 62)),
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button role="menuitem" onClick={() => openRenameDialog(sourceContextMenu.sourceId)}><Pencil size={16} /> Rename source</button>
+        </div>
+      )}
+
       <ImportDialog open={importOpen} busy={importBusy} error={importError} onClose={() => { setImportOpen(false); setImportError(null) }} onImport={handleImport} />
+      <RenameDialog
+        open={renameSourceId !== null}
+        currentName={sources.find((source) => source.id === renameSourceId)?.name ?? ''}
+        onClose={() => setRenameSourceId(null)}
+        onRename={(name) => renameSourceId && renameSource(renameSourceId, name)}
+      />
       {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </div>
   )
