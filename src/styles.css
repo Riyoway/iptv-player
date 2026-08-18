@@ -78,14 +78,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .icon-control { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 14px; border: 0; background: transparent; cursor: pointer; color: #f8fbfc; }
 .icon-control:hover { background: rgba(255,255,255,.1); }
 .primary-control { background: rgba(255,255,255,.12); }
+.recording-stop-control { color: #ff8d8d; background: rgba(255,100,100,.1); }
+.recording-stop-control:hover { color: #ffb0b0; background: rgba(255,100,100,.18); }
 .volume-slider { width: 74px; accent-color: var(--accent); }
 .time-label { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.9); margin-left: 4px; display: inline-flex; align-items: center; gap: 6px; }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5d5d; }
+.recording-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff6262; box-shadow: 0 0 0 3px rgba(255,98,98,.16); }
 
 .now-playing-meta { min-height: 78px; padding: 13px 16px; display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
 .now-playing-text { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .now-playing-text span { color: var(--muted); font-size: 11px; }
 .now-playing-text strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; margin-top: 2px; }
+.recording-error { max-width: 210px; color: var(--danger); font-size: 11px; line-height: 1.35; }
+.recording-download-button { min-height: 40px; padding: 0 11px; border: 1px solid rgba(143,227,255,.24); border-radius: 12px; background: rgba(143,227,255,.08); color: var(--accent); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.recording-download-button:hover { background: rgba(143,227,255,.16); }
 .group-pill, .count-chip { border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); border-radius: 999px; padding: 6px 10px; font-size: 11px; font-weight: 700; }
 
 .library-panel { min-width: 0; border: 1px solid var(--line); border-radius: 30px; background: rgba(20,23,25,.82); overflow: hidden; min-height: 620px; box-shadow: 0 18px 70px rgba(0,0,0,.18); }

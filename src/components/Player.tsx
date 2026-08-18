@@ -2,6 +2,7 @@ import { Button, Chip } from '@heroui/react'
 import {
   AlertCircle,
   Copy,
+  Download,
   Maximize2,
   Minimize2,
   Pause,
@@ -9,11 +10,12 @@ import {
   Play,
   Radio,
   RotateCcw,
+  Square,
   Volume1,
   Volume2,
   VolumeX,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useHlsPlayer } from '../hooks/useHlsPlayer'
 import type { Channel } from '../types/iptv'
 
@@ -54,6 +56,40 @@ type SafariVideo = HTMLVideoElement & {
   webkitPresentationMode?: string
 }
 
+type RecordableVideo = HTMLVideoElement & {
+  captureStream?: () => MediaStream
+  mozCaptureStream?: () => MediaStream
+}
+
+type RecordingDownload = {
+  filename: string
+  url: string
+}
+
+const recordingMimeTypes = [
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4',
+]
+
+const getRecordingMimeType = () => {
+  if (typeof MediaRecorder === 'undefined') return null
+  return recordingMimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? null
+}
+
+const recordingFilename = (channelName: string, mimeType: string) => {
+  const safeName = [...channelName]
+    .map((character) => character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? ' ' : character)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || 'IPTV recording'
+  const extension = mimeType.includes('mp4') ? 'mp4' : 'webm'
+  return `${safeName}-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`
+}
+
 export function Player({ channel }: { channel?: Channel }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const playerRef = useRef<HTMLDivElement | null>(null)
@@ -69,13 +105,115 @@ export function Player({ channel }: { channel?: Channel }) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingDownload, setRecordingDownload] = useState<RecordingDownload | null>(null)
+  const [recordingError, setRecordingError] = useState<string | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recordingUrlRef = useRef<string | null>(null)
+  const recordingMimeType = useMemo(getRecordingMimeType, [])
 
   useEffect(() => {
     setPlaying(false)
     setCurrentTime(0)
     setDuration(0)
     setReloadToken(0)
+    setRecordingError(null)
   }, [channel?.id])
+
+  const clearRecordingDownload = useCallback(() => {
+    if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current)
+    recordingUrlRef.current = null
+    setRecordingDownload(null)
+  }, [])
+
+  const startRecording = useCallback(() => {
+    const video = videoRef.current as RecordableVideo | null
+    const activeRecorder = recorderRef.current
+    if (!video || activeRecorder?.state === 'recording') return
+    if (activeRecorder?.state === 'paused') {
+      activeRecorder.resume()
+      setIsRecording(true)
+      return
+    }
+    if (!recordingMimeType) {
+      setRecordingError('Recording is not supported in this browser.')
+      return
+    }
+
+    let stream: MediaStream
+    try {
+      stream = video.captureStream?.() ?? video.mozCaptureStream?.() ?? (() => { throw new Error('captureStream is unavailable') })()
+    } catch {
+      setRecordingError('This stream cannot be recorded in the browser.')
+      return
+    }
+
+    if (!stream.getTracks().length) {
+      setRecordingError('The stream has no recordable media tracks.')
+      return
+    }
+
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: recordingMimeType })
+      const recordingChunks: Blob[] = []
+      const recordingChannelName = channel?.name ?? 'IPTV recording'
+      clearRecordingDownload()
+      setRecordingError(null)
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunks.push(event.data)
+      }
+      recorder.onerror = () => {
+        setIsRecording(false)
+        setRecordingError('Recording stopped because the browser reported an error.')
+      }
+      recorder.onstop = () => {
+        recorder.stream.getTracks().forEach((track) => track.stop())
+        if (recorderRef.current === recorder) recorderRef.current = null
+        setIsRecording(false)
+        if (!recordingChunks.length) return
+        const blob = new Blob(recordingChunks, { type: recorder.mimeType || recordingMimeType })
+        const url = URL.createObjectURL(blob)
+        recordingUrlRef.current = url
+        setRecordingDownload({ filename: recordingFilename(recordingChannelName, recorder.mimeType || recordingMimeType), url })
+      }
+      recorder.start(1000)
+      recorderRef.current = recorder
+      setIsRecording(true)
+    } catch {
+      stream.getTracks().forEach((track) => track.stop())
+      setRecordingError('Recording could not be started for this stream.')
+    }
+  }, [channel?.name, clearRecordingDownload, recordingMimeType])
+
+  const stopRecording = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state === 'inactive') return
+    recorder.stop()
+  }, [])
+
+  const downloadRecording = useCallback(() => {
+    if (!recordingDownload) return
+    const anchor = document.createElement('a')
+    anchor.href = recordingDownload.url
+    anchor.download = recordingDownload.filename
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }, [recordingDownload])
+
+  useEffect(() => {
+    return () => {
+      const recorder = recorderRef.current
+      if (recorder && recorder.state !== 'inactive') recorder.stop()
+    }
+  }, [channel?.id])
+
+  useEffect(() => {
+    return () => {
+      if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const video = videoRef.current as SafariVideo | null
@@ -110,6 +248,22 @@ export function Player({ channel }: { channel?: Channel }) {
     } catch {
       setShowControls(true)
     }
+  }
+
+  const stopPlayback = () => {
+    videoRef.current?.pause()
+    stopRecording()
+  }
+
+  const handleVideoPlay = () => {
+    setPlaying(true)
+    startRecording()
+  }
+
+  const handleVideoPause = () => {
+    setPlaying(false)
+    const recorder = recorderRef.current
+    if (recorder?.state === 'recording') recorder.pause()
   }
 
   const toggleMute = () => {
@@ -230,8 +384,10 @@ export function Player({ channel }: { channel?: Channel }) {
             ref={videoRef}
             playsInline
             autoPlay
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
+            onPlay={handleVideoPlay}
+            onPlaying={handleVideoPlay}
+            onPause={handleVideoPause}
+            onEnded={stopRecording}
             onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
             onDurationChange={(event) => setDuration(event.currentTarget.duration)}
           />
@@ -287,6 +443,11 @@ export function Player({ channel }: { channel?: Channel }) {
                 <button className="icon-control primary-control" onClick={() => void togglePlay()} aria-label={playing ? 'Pause' : 'Play'}>
                   {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
                 </button>
+                {isRecording && (
+                  <button className="icon-control recording-stop-control" onClick={stopPlayback} aria-label="Stop playback and finish recording" title="Stop and prepare download">
+                    <Square size={17} fill="currentColor" />
+                  </button>
+                )}
                 <button className="icon-control" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
                   {muted || volume === 0 ? <VolumeX size={20} /> : volume < 0.55 ? <Volume1 size={20} /> : <Volume2 size={20} />}
                 </button>
@@ -300,10 +461,16 @@ export function Player({ channel }: { channel?: Channel }) {
                   aria-label="Volume"
                   onChange={(event) => updateVolume(Number(event.target.value))}
                 />
-                <span className="time-label">{live ? <><i className="live-dot" /> LIVE</> : `${formatTime(currentTime)} / ${formatTime(duration)}`}</span>
+                <span className="time-label">
+                  {isRecording && <><i className="recording-dot" /> REC</>}
+                  {live ? <><i className="live-dot" /> LIVE</> : `${formatTime(currentTime)} / ${formatTime(duration)}`}
+                </span>
               </div>
               <div className="controls-right">
                 <button className="icon-control" onClick={() => void copyUrl()} aria-label="Copy stream URL" title={copied ? 'Copied' : 'Copy URL'}><Copy size={19} /></button>
+                {recordingDownload && !isRecording && (
+                  <button className="icon-control" onClick={downloadRecording} aria-label="Download recording" title="Download recording"><Download size={19} /></button>
+                )}
                 <button className="icon-control pip-control" onClick={() => void togglePip()} aria-label="Picture in picture"><PictureInPicture2 size={20} /></button>
                 <button className="icon-control" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
                   {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
@@ -324,6 +491,8 @@ export function Player({ channel }: { channel?: Channel }) {
             <strong>{channel.name}</strong>
           </div>
           {channel.group && <Chip className="group-pill" size="sm" variant="soft">{channel.group}</Chip>}
+          {recordingError && <span className="recording-error" role="status">{recordingError}</span>}
+          {recordingDownload && !isRecording && <button className="recording-download-button" onClick={downloadRecording}><Download size={15} /> Download</button>}
         </div>
       )}
     </section>
