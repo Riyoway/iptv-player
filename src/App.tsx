@@ -3,7 +3,6 @@ import {
   Clock3,
   Heart,
   ListVideo,
-  MoreHorizontal,
   Pencil,
   Plus,
   RadioTower,
@@ -11,7 +10,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { ChannelList } from './components/ChannelList'
 import { ImportDialog, type ImportPayload } from './components/ImportDialog'
 import { Player } from './components/Player'
@@ -22,6 +21,7 @@ import type { Channel, PlaylistSource } from './types/iptv'
 
 type View = 'library' | 'favorites' | 'recent'
 type SourceContextMenu = { sourceId: string; x: number; y: number }
+type SourceScrollMetrics = { clientWidth: number; scrollWidth: number; scrollLeft: number }
 
 const MAX_PLAYLIST_BYTES = 25 * 1024 * 1024
 
@@ -89,6 +89,44 @@ export default function App() {
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null)
   const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenu | null>(null)
   const [renameSourceId, setRenameSourceId] = useState<string | null>(null)
+  const sourceListRef = useRef<HTMLDivElement | null>(null)
+  const sourceScrollbarDragRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number } | null>(null)
+  const sourceScrollTargetRef = useRef(0)
+  const sourceScrollFrameRef = useRef<number | null>(null)
+  const [sourceScrollMetrics, setSourceScrollMetrics] = useState<SourceScrollMetrics>({ clientWidth: 0, scrollWidth: 0, scrollLeft: 0 })
+
+  const scrollSourceTo = useCallback((nextPosition: number, behavior: 'auto' | 'smooth' = 'auto') => {
+    const sourceList = sourceListRef.current
+    if (!sourceList) return
+    const maxScroll = Math.max(0, sourceList.scrollWidth - sourceList.clientWidth)
+    const nextScrollLeft = Math.max(0, Math.min(maxScroll, nextPosition))
+    sourceScrollTargetRef.current = nextScrollLeft
+
+    if (behavior === 'auto' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      if (sourceScrollFrameRef.current !== null) window.cancelAnimationFrame(sourceScrollFrameRef.current)
+      sourceScrollFrameRef.current = null
+      sourceList.scrollLeft = nextScrollLeft
+      return
+    }
+
+    if (sourceScrollFrameRef.current !== null) return
+    const animate = () => {
+      const currentList = sourceListRef.current
+      if (!currentList) {
+        sourceScrollFrameRef.current = null
+        return
+      }
+      const distance = sourceScrollTargetRef.current - currentList.scrollLeft
+      if (Math.abs(distance) < 0.5) {
+        currentList.scrollLeft = sourceScrollTargetRef.current
+        sourceScrollFrameRef.current = null
+        return
+      }
+      currentList.scrollLeft += distance * 0.22
+      sourceScrollFrameRef.current = window.requestAnimationFrame(animate)
+    }
+    sourceScrollFrameRef.current = window.requestAnimationFrame(animate)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -127,6 +165,40 @@ export default function App() {
       window.removeEventListener('scroll', closeOnScroll, true)
     }
   }, [sourceContextMenu])
+
+  useEffect(() => {
+    const sourceList = sourceListRef.current
+    if (!sourceList || view !== 'library') {
+      setSourceScrollMetrics({ clientWidth: 0, scrollWidth: 0, scrollLeft: 0 })
+      return
+    }
+    const updateScrollMetrics = () => {
+      const maxScroll = Math.max(0, sourceList.scrollWidth - sourceList.clientWidth)
+      if (sourceScrollFrameRef.current === null) sourceScrollTargetRef.current = sourceList.scrollLeft
+      else sourceScrollTargetRef.current = Math.max(0, Math.min(maxScroll, sourceScrollTargetRef.current))
+      setSourceScrollMetrics({ clientWidth: sourceList.clientWidth, scrollWidth: sourceList.scrollWidth, scrollLeft: sourceList.scrollLeft })
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (sourceList.scrollWidth <= sourceList.clientWidth) return
+      const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX
+      if (!delta) return
+      scrollSourceTo(sourceScrollTargetRef.current + delta, 'smooth')
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    updateScrollMetrics()
+    sourceList.addEventListener('scroll', updateScrollMetrics, { passive: true })
+    sourceList.addEventListener('wheel', handleWheel, { passive: false })
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateScrollMetrics)
+    resizeObserver?.observe(sourceList)
+    return () => {
+      sourceList.removeEventListener('scroll', updateScrollMetrics)
+      sourceList.removeEventListener('wheel', handleWheel)
+      resizeObserver?.disconnect()
+      if (sourceScrollFrameRef.current !== null) window.cancelAnimationFrame(sourceScrollFrameRef.current)
+      sourceScrollFrameRef.current = null
+    }
+  }, [scrollSourceTo, sources.length, view])
 
   const allChannels = useMemo(() => sources.flatMap((source) => source.channels), [sources])
   const channelMap = useMemo(() => new Map(allChannels.map((channel) => [channel.id, channel])), [allChannels])
@@ -302,6 +374,63 @@ export default function App() {
     setQuery('')
   }
 
+  const sourceMaxScroll = Math.max(0, sourceScrollMetrics.scrollWidth - sourceScrollMetrics.clientWidth)
+  const sourceThumbWidth = sourceScrollMetrics.scrollWidth > 0
+    ? Math.max(14, Math.min(100, (sourceScrollMetrics.clientWidth / sourceScrollMetrics.scrollWidth) * 100))
+    : 100
+  const sourceThumbLeft = sourceMaxScroll > 0
+    ? (sourceScrollMetrics.scrollLeft / sourceMaxScroll) * (100 - sourceThumbWidth)
+    : 0
+
+  const handleSourceScrollbarTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return
+    const sourceList = sourceListRef.current
+    if (!sourceList || sourceMaxScroll <= 0) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
+    scrollSourceTo(ratio * sourceMaxScroll)
+  }
+
+  const handleSourceScrollbarThumbPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    scrollSourceTo(sourceListRef.current?.scrollLeft ?? 0)
+    sourceScrollbarDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: sourceListRef.current?.scrollLeft ?? 0,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleSourceScrollbarThumbPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = sourceScrollbarDragRef.current
+    const sourceList = sourceListRef.current
+    const track = event.currentTarget.parentElement
+    if (!drag || drag.pointerId !== event.pointerId || !sourceList || !track) return
+    const thumbWidth = track.clientWidth * (sourceThumbWidth / 100)
+    const travel = Math.max(1, track.clientWidth - thumbWidth)
+    scrollSourceTo(drag.startScrollLeft + ((event.clientX - drag.startX) / travel) * sourceMaxScroll)
+  }
+
+  const handleSourceScrollbarThumbPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sourceScrollbarDragRef.current?.pointerId !== event.pointerId) return
+    sourceScrollbarDragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  const handleSourceScrollbarKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const sourceList = sourceListRef.current
+    if (!sourceList) return
+    const step = Math.max(48, Math.round(sourceList.clientWidth * 0.25))
+    if (event.key === 'ArrowLeft') scrollSourceTo(sourceScrollTargetRef.current - step, 'smooth')
+    else if (event.key === 'ArrowRight') scrollSourceTo(sourceScrollTargetRef.current + step, 'smooth')
+    else if (event.key === 'Home') scrollSourceTo(0, 'smooth')
+    else if (event.key === 'End') scrollSourceTo(sourceMaxScroll, 'smooth')
+    else return
+    event.preventDefault()
+  }
+
   return (
     <div className="app-shell">
       <aside className="nav-rail" aria-label="Primary navigation">
@@ -345,28 +474,55 @@ export default function App() {
             {sources.length > 0 && view === 'library' && (
               <div className="source-strip" aria-label="Sources">
                 <button className={sourceFilter === 'all' ? 'active' : ''} onClick={() => { setSourceFilter('all'); setGroup('All') }}>All sources</button>
-                {sources.map((source) => (
-                  <div
-                    key={source.id}
-                    className={`source-chip-wrap ${sourceFilter === source.id ? 'active' : ''}`}
-                    onContextMenu={(event) => openSourceContextMenu(event, source.id)}
-                  >
-                    <button className="source-chip-main" onClick={() => { setSourceFilter(source.id); setGroup('All') }}>
-                      {source.kind === 'playlist' ? <ListVideo size={15} /> : <RadioTower size={15} />}
-                      <span>{source.name}</span>
-                      <em>{source.kind === 'playlist' ? source.channels.length : '1'}</em>
-                    </button>
-                    {source.origin === 'url' && source.kind === 'playlist' && (
-                      <button className="source-action" disabled={refreshingSourceId === source.id} onClick={() => void refreshSource(source)} aria-label={`Refresh ${source.name}`}>
-                        <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
-                      </button>
-                    )}
-                    <button className="source-menu" onClick={(event) => openSourceContextMenu(event, source.id)} aria-label={`More actions for ${source.name}`} aria-haspopup="menu" aria-expanded={sourceContextMenu?.sourceId === source.id}>
-                      <MoreHorizontal size={16} />
-                    </button>
-                    <button className="source-delete" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.name}`}><Trash2 size={14} /></button>
+                <div className="source-scroll-area">
+                  <div className="source-list" ref={sourceListRef}>
+                    {sources.map((source) => (
+                      <div
+                        key={source.id}
+                        className={`source-chip-wrap ${sourceFilter === source.id ? 'active' : ''}`}
+                      >
+                        <button className="source-chip-main" onClick={() => { setSourceFilter(source.id); setGroup('All') }}>
+                          {source.kind === 'playlist' ? <ListVideo size={15} /> : <RadioTower size={15} />}
+                          <span>{source.name}</span>
+                          <em>{source.kind === 'playlist' ? source.channels.length : '1'}</em>
+                        </button>
+                        {source.origin === 'url' && source.kind === 'playlist' && (
+                          <button className="source-action" disabled={refreshingSourceId === source.id} onClick={() => void refreshSource(source)} aria-label={`Refresh ${source.name}`}>
+                            <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
+                          </button>
+                        )}
+                        <button className="source-rename" onClick={() => openRenameDialog(source.id)} aria-label={`Rename ${source.name}`}>
+                          <Pencil size={15} />
+                        </button>
+                        <button className="source-delete" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.name}`}><Trash2 size={14} /></button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  {sourceMaxScroll > 0 && (
+                    <div
+                      className="source-scrollbar"
+                      role="scrollbar"
+                      aria-label="Playlist sources"
+                      aria-valuemin={0}
+                      aria-valuemax={sourceMaxScroll}
+                      aria-valuenow={Math.round(sourceScrollMetrics.scrollLeft)}
+                      tabIndex={0}
+                      onKeyDown={handleSourceScrollbarKeyDown}
+                      onPointerDown={handleSourceScrollbarTrackPointerDown}
+                    >
+                      <div
+                        className="source-scrollbar-thumb"
+                        aria-hidden="true"
+                        style={{ width: `${sourceThumbWidth}%`, left: `${sourceThumbLeft}%` }}
+                        onPointerDown={handleSourceScrollbarThumbPointerDown}
+                        onPointerMove={handleSourceScrollbarThumbPointerMove}
+                        onPointerUp={handleSourceScrollbarThumbPointerUp}
+                        onPointerCancel={handleSourceScrollbarThumbPointerUp}
+                        onLostPointerCapture={handleSourceScrollbarThumbPointerUp}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -386,7 +542,7 @@ export default function App() {
                 <Button className="primary-button" onPress={() => setImportOpen(true)}><Plus size={18} /> Add source</Button>
               </div>
             ) : (
-              <ChannelList channels={visibleChannels} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} />
+              <ChannelList channels={visibleChannels} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} onRenameSource={openRenameDialog} onOpenContextMenu={openSourceContextMenu} />
             )}
           </section>
         </div>

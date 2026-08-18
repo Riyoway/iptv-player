@@ -1,5 +1,6 @@
-import { Heart, Play, Radio, SearchX } from 'lucide-react'
+import { Heart, Pencil, Play, Radio, SearchX } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { Channel } from '../types/iptv'
 
 const PAGE_SIZE = 200
@@ -10,12 +11,16 @@ export function ChannelList({
   favorites,
   onPlay,
   onToggleFavorite,
+  onRenameSource,
+  onOpenContextMenu,
 }: {
   channels: Channel[]
   currentId?: string
   favorites: Set<string>
   onPlay: (channel: Channel) => void
   onToggleFavorite: (channel: Channel) => void
+  onRenameSource?: (sourceId: string) => void
+  onOpenContextMenu?: (event: ReactMouseEvent<HTMLElement>, sourceId: string) => void
 }) {
   const [limit, setLimit] = useState(PAGE_SIZE)
 
@@ -39,7 +44,13 @@ export function ChannelList({
         const active = channel.id === currentId
         const favorite = favorites.has(channel.id)
         return (
-          <article key={channel.id} className={`channel-row ${active ? 'active' : ''}`}>
+          <article
+            key={channel.id}
+            className={`channel-row ${active ? 'active' : ''}`}
+            onContextMenuCapture={(event) => {
+              if (channel.sourceId && onOpenContextMenu) onOpenContextMenu(event, channel.sourceId)
+            }}
+          >
             <button className="channel-main" onClick={() => onPlay(channel)}>
               <div className="channel-art">
                 <Radio className="logo-fallback" size={20} />
@@ -52,6 +63,11 @@ export function ChannelList({
               </div>
               {active && <span className="playing-badge"><i /> Playing</span>}
             </button>
+            {channel.sourceId && onRenameSource && (
+              <button className="channel-rename-button" onClick={() => onRenameSource(channel.sourceId!)} aria-label={`Rename source for ${channel.name}`}>
+                <Pencil size={17} />
+              </button>
+            )}
             <button className={`favorite-button ${favorite ? 'selected' : ''}`} onClick={() => onToggleFavorite(channel)} aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}>
               <Heart size={19} fill={favorite ? 'currentColor' : 'none'} />
             </button>
