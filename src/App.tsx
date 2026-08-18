@@ -1,6 +1,9 @@
 import { Button, Chip } from '@heroui/react'
 import {
   Clock3,
+  Check,
+  ChevronDown,
+  ExternalLink,
   Heart,
   ListVideo,
   Pencil,
@@ -8,20 +11,22 @@ import {
   RadioTower,
   RefreshCw,
   Search,
+  Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { ChannelList } from './components/ChannelList'
 import { ImportDialog, type ImportPayload } from './components/ImportDialog'
 import { Player } from './components/Player'
 import { RenameDialog } from './components/RenameDialog'
+import { SettingsDialog } from './components/SettingsDialog'
 import { createImportResult, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
 import { loadFavorites, loadHistory, loadSources, saveFavorites, saveHistory, saveSources } from './lib/storage'
+import { useSettings } from './lib/i18n'
 import type { Channel, PlaylistSource } from './types/iptv'
 
 type View = 'library' | 'favorites' | 'recent'
-type SourceContextMenu = { sourceId: string; x: number; y: number }
-type SourceScrollMetrics = { clientWidth: number; scrollWidth: number; scrollLeft: number }
+type ChannelContextMenu = { channelId: string; x: number; y: number }
 
 const MAX_PLAYLIST_BYTES = 25 * 1024 * 1024
 
@@ -73,6 +78,7 @@ const probeRemoteText = async (url: string) => {
 }
 
 export default function App() {
+  const { t } = useSettings()
   const [sources, setSources] = useState<PlaylistSource[]>([])
   const [storageReady, setStorageReady] = useState(false)
   const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites())
@@ -87,46 +93,12 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null)
-  const [sourceContextMenu, setSourceContextMenu] = useState<SourceContextMenu | null>(null)
+  const [channelContextMenu, setChannelContextMenu] = useState<ChannelContextMenu | null>(null)
+  const [sourceDropdownOpen, setSourceDropdownOpen] = useState(false)
   const [renameSourceId, setRenameSourceId] = useState<string | null>(null)
-  const sourceListRef = useRef<HTMLDivElement | null>(null)
-  const sourceScrollbarDragRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number } | null>(null)
-  const sourceScrollTargetRef = useRef(0)
-  const sourceScrollFrameRef = useRef<number | null>(null)
-  const [sourceScrollMetrics, setSourceScrollMetrics] = useState<SourceScrollMetrics>({ clientWidth: 0, scrollWidth: 0, scrollLeft: 0 })
-
-  const scrollSourceTo = useCallback((nextPosition: number, behavior: 'auto' | 'smooth' = 'auto') => {
-    const sourceList = sourceListRef.current
-    if (!sourceList) return
-    const maxScroll = Math.max(0, sourceList.scrollWidth - sourceList.clientWidth)
-    const nextScrollLeft = Math.max(0, Math.min(maxScroll, nextPosition))
-    sourceScrollTargetRef.current = nextScrollLeft
-
-    if (behavior === 'auto' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      if (sourceScrollFrameRef.current !== null) window.cancelAnimationFrame(sourceScrollFrameRef.current)
-      sourceScrollFrameRef.current = null
-      sourceList.scrollLeft = nextScrollLeft
-      return
-    }
-
-    if (sourceScrollFrameRef.current !== null) return
-    const animate = () => {
-      const currentList = sourceListRef.current
-      if (!currentList) {
-        sourceScrollFrameRef.current = null
-        return
-      }
-      const distance = sourceScrollTargetRef.current - currentList.scrollLeft
-      if (Math.abs(distance) < 0.5) {
-        currentList.scrollLeft = sourceScrollTargetRef.current
-        sourceScrollFrameRef.current = null
-        return
-      }
-      currentList.scrollLeft += distance * 0.22
-      sourceScrollFrameRef.current = window.requestAnimationFrame(animate)
-    }
-    sourceScrollFrameRef.current = window.requestAnimationFrame(animate)
-  }, [])
+  const [renameChannelId, setRenameChannelId] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const sourceDropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -146,16 +118,16 @@ export default function App() {
   useEffect(() => saveHistory(history), [history])
 
   useEffect(() => {
-    if (!sourceContextMenu) return
+    if (!channelContextMenu) return
     const closeOnPointerDown = (event: PointerEvent) => {
       const target = event.target
-      if (target instanceof Element && target.closest('[data-source-context-menu]')) return
-      setSourceContextMenu(null)
+      if (target instanceof Element && target.closest('[data-channel-context-menu]')) return
+      setChannelContextMenu(null)
     }
     const closeOnKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSourceContextMenu(null)
+      if (event.key === 'Escape') setChannelContextMenu(null)
     }
-    const closeOnScroll = () => setSourceContextMenu(null)
+    const closeOnScroll = () => setChannelContextMenu(null)
     document.addEventListener('pointerdown', closeOnPointerDown)
     document.addEventListener('keydown', closeOnKeyDown)
     window.addEventListener('scroll', closeOnScroll, true)
@@ -164,41 +136,28 @@ export default function App() {
       document.removeEventListener('keydown', closeOnKeyDown)
       window.removeEventListener('scroll', closeOnScroll, true)
     }
-  }, [sourceContextMenu])
+  }, [channelContextMenu])
 
   useEffect(() => {
-    const sourceList = sourceListRef.current
-    if (!sourceList || view !== 'library') {
-      setSourceScrollMetrics({ clientWidth: 0, scrollWidth: 0, scrollLeft: 0 })
-      return
+    if (!sourceDropdownOpen) return
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && sourceDropdownRef.current?.contains(target)) return
+      setSourceDropdownOpen(false)
     }
-    const updateScrollMetrics = () => {
-      const maxScroll = Math.max(0, sourceList.scrollWidth - sourceList.clientWidth)
-      if (sourceScrollFrameRef.current === null) sourceScrollTargetRef.current = sourceList.scrollLeft
-      else sourceScrollTargetRef.current = Math.max(0, Math.min(maxScroll, sourceScrollTargetRef.current))
-      setSourceScrollMetrics({ clientWidth: sourceList.clientWidth, scrollWidth: sourceList.scrollWidth, scrollLeft: sourceList.scrollLeft })
+    const closeOnKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSourceDropdownOpen(false)
     }
-    const handleWheel = (event: WheelEvent) => {
-      if (sourceList.scrollWidth <= sourceList.clientWidth) return
-      const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX
-      if (!delta) return
-      scrollSourceTo(sourceScrollTargetRef.current + delta, 'smooth')
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    updateScrollMetrics()
-    sourceList.addEventListener('scroll', updateScrollMetrics, { passive: true })
-    sourceList.addEventListener('wheel', handleWheel, { passive: false })
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateScrollMetrics)
-    resizeObserver?.observe(sourceList)
+    const closeOnScroll = () => setSourceDropdownOpen(false)
+    document.addEventListener('pointerdown', closeOnPointerDown)
+    document.addEventListener('keydown', closeOnKeyDown)
+    window.addEventListener('scroll', closeOnScroll, true)
     return () => {
-      sourceList.removeEventListener('scroll', updateScrollMetrics)
-      sourceList.removeEventListener('wheel', handleWheel)
-      resizeObserver?.disconnect()
-      if (sourceScrollFrameRef.current !== null) window.cancelAnimationFrame(sourceScrollFrameRef.current)
-      sourceScrollFrameRef.current = null
+      document.removeEventListener('pointerdown', closeOnPointerDown)
+      document.removeEventListener('keydown', closeOnKeyDown)
+      window.removeEventListener('scroll', closeOnScroll, true)
     }
-  }, [scrollSourceTo, sources.length, view])
+  }, [sourceDropdownOpen])
 
   const allChannels = useMemo(() => sources.flatMap((source) => source.channels), [sources])
   const channelMap = useMemo(() => new Map(allChannels.map((channel) => [channel.id, channel])), [allChannels])
@@ -249,7 +208,7 @@ export default function App() {
     setImportError(null)
     setQuery('')
     setGroup('All')
-    setToast(source.kind === 'playlist' ? `Added ${source.channels.length} channels` : 'Stream added')
+    setToast(source.kind === 'playlist' ? t('toast.addedChannels', { count: source.channels.length }) : t('toast.streamAdded'))
     window.setTimeout(() => setToast(null), 2200)
   }
 
@@ -260,7 +219,7 @@ export default function App() {
       if (payload.type === 'url') {
         const url = payload.value.trim()
         const parsed = new URL(url)
-        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Only HTTP and HTTPS stream URLs are supported.')
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error(t('errors.httpOnly'))
 
         const isM3u = /\.m3u(?:$|[?#])/i.test(url)
         const isM3u8 = /\.m3u8(?:$|[?#])/i.test(url)
@@ -270,7 +229,7 @@ export default function App() {
           content = await probeRemoteText(url)
         } catch (error) {
           if (isM3u && !isM3u8) {
-            throw new Error(`The M3U playlist could not be read in the browser. It may block CORS requests. ${error instanceof Error ? error.message : ''}`.trim())
+            throw new Error(t('errors.m3uCors', { details: error instanceof Error ? ` ${error.message}` : '' }).trim())
           }
           // A direct stream can still be handed to the media element even when probing is blocked.
           content = undefined
@@ -287,25 +246,25 @@ export default function App() {
       }
 
       if (payload.type === 'file') {
-        if (payload.file.size > MAX_PLAYLIST_BYTES) throw new Error('Playlist files are limited to 25 MB.')
+        if (payload.file.size > MAX_PLAYLIST_BYTES) throw new Error(t('errors.playlistTooLarge'))
         const content = await readFile(payload.file)
         if (looksLikeHlsManifest(content)) {
-          throw new Error('This is a standalone HLS manifest. Open its original M3U8 URL so relative media segments keep working.')
+          throw new Error(t('errors.standaloneHlsFile'))
         }
-        if (!looksLikeM3uPlaylist(content)) throw new Error('No IPTV playlist entries were found in this file.')
+        if (!looksLikeM3uPlaylist(content)) throw new Error(t('errors.noPlaylistEntries'))
         const result = createImportResult({ name: payload.name?.trim() || payload.file.name.replace(/\.m3u8?$/i, ''), content, origin: 'file' })
         addSource(result.source)
         return
       }
 
       if (!looksLikeM3uPlaylist(payload.value)) {
-        if (looksLikeHlsManifest(payload.value)) throw new Error('Paste the original M3U8 URL for standalone HLS manifests.')
-        throw new Error('The pasted text does not look like an IPTV M3U playlist.')
+        if (looksLikeHlsManifest(payload.value)) throw new Error(t('errors.pastedHls'))
+        throw new Error(t('errors.pastedInvalid'))
       }
-      const result = createImportResult({ name: payload.name?.trim() || 'Pasted playlist', content: payload.value, origin: 'text' })
+      const result = createImportResult({ name: payload.name?.trim() || t('import.pastedNamePlaceholder'), content: payload.value, origin: 'text' })
       addSource(result.source)
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Could not add this source.')
+      setImportError(error instanceof Error ? error.message : t('errors.addSource'))
     } finally {
       setImportBusy(false)
     }
@@ -316,13 +275,13 @@ export default function App() {
     setRefreshingSourceId(source.id)
     try {
       const content = await probeRemoteText(source.url)
-      if (!looksLikeM3uPlaylist(content)) throw new Error('The URL no longer returns an IPTV playlist.')
+      if (!looksLikeM3uPlaylist(content)) throw new Error(t('errors.urlNotPlaylist'))
       const channels = parseM3u(content, source.id, source.url)
-      if (!channels.length) throw new Error('No playable entries were found.')
+      if (!channels.length) throw new Error(t('errors.noPlayableEntries'))
       setSources((previous) => previous.map((item) => item.id === source.id ? { ...item, channels } : item))
-      setToast(`Updated ${channels.length} channels`)
+      setToast(t('toast.updatedChannels', { count: channels.length }))
     } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Could not refresh this source')
+      setToast(error instanceof Error ? error.message : t('errors.sourceRefresh'))
     } finally {
       setRefreshingSourceId(null)
       window.setTimeout(() => setToast(null), 2400)
@@ -332,6 +291,7 @@ export default function App() {
   const removeSource = (id: string) => {
     const source = sources.find((item) => item.id === id)
     if (!source) return
+    setSourceDropdownOpen(false)
     const ids = new Set(source.channels.map((channel) => channel.id))
     setSources((previous) => previous.filter((item) => item.id !== id))
     setFavorites((previous) => new Set([...previous].filter((channelId) => !ids.has(channelId))))
@@ -341,21 +301,28 @@ export default function App() {
       setSourceFilter('all')
       setGroup('All')
     }
-    if (sourceContextMenu?.sourceId === id) setSourceContextMenu(null)
+    if (channelContextMenu && ids.has(channelContextMenu.channelId)) setChannelContextMenu(null)
     if (renameSourceId === id) setRenameSourceId(null)
-    setToast('Source removed')
+    if (renameChannelId && ids.has(renameChannelId)) setRenameChannelId(null)
+    setToast(t('toast.sourceRemoved'))
     window.setTimeout(() => setToast(null), 1800)
   }
 
-  const openSourceContextMenu = (event: ReactMouseEvent, sourceId: string) => {
+  const openChannelContextMenu = (event: ReactMouseEvent, channelId: string) => {
     event.preventDefault()
     event.stopPropagation()
-    setSourceContextMenu({ sourceId, x: event.clientX, y: event.clientY })
+    setChannelContextMenu({ channelId, x: event.clientX, y: event.clientY })
   }
 
   const openRenameDialog = (sourceId: string) => {
-    setSourceContextMenu(null)
+    setChannelContextMenu(null)
+    setSourceDropdownOpen(false)
     setRenameSourceId(sourceId)
+  }
+
+  const openChannelRenameDialog = (channelId: string) => {
+    setChannelContextMenu(null)
+    setRenameChannelId(channelId)
   }
 
   const renameSource = (sourceId: string, name: string) => {
@@ -363,7 +330,19 @@ export default function App() {
     if (!nextName) return
     setSources((previous) => previous.map((source) => source.id === sourceId ? { ...source, name: nextName } : source))
     setRenameSourceId(null)
-    setToast('Source renamed')
+    setToast(t('toast.sourceRenamed'))
+    window.setTimeout(() => setToast(null), 1800)
+  }
+
+  const renameChannel = (channelId: string, name: string) => {
+    const nextName = name.trim()
+    if (!nextName) return
+    setSources((previous) => previous.map((source) => ({
+      ...source,
+      channels: source.channels.map((channel) => channel.id === channelId ? { ...channel, name: nextName } : channel),
+    })))
+    setRenameChannelId(null)
+    setToast(t('toast.channelRenamed'))
     window.setTimeout(() => setToast(null), 1800)
   }
 
@@ -371,84 +350,39 @@ export default function App() {
     setView(nextView)
     setGroup('All')
     setSourceFilter('all')
+    setSourceDropdownOpen(false)
     setQuery('')
   }
 
-  const sourceMaxScroll = Math.max(0, sourceScrollMetrics.scrollWidth - sourceScrollMetrics.clientWidth)
-  const sourceThumbWidth = sourceScrollMetrics.scrollWidth > 0
-    ? Math.max(14, Math.min(100, (sourceScrollMetrics.clientWidth / sourceScrollMetrics.scrollWidth) * 100))
-    : 100
-  const sourceThumbLeft = sourceMaxScroll > 0
-    ? (sourceScrollMetrics.scrollLeft / sourceMaxScroll) * (100 - sourceThumbWidth)
-    : 0
-
-  const handleSourceScrollbarTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return
-    const sourceList = sourceListRef.current
-    if (!sourceList || sourceMaxScroll <= 0) return
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
-    scrollSourceTo(ratio * sourceMaxScroll)
+  const selectSource = (sourceId: string) => {
+    setSourceFilter(sourceId)
+    setGroup('All')
+    setSourceDropdownOpen(false)
   }
 
-  const handleSourceScrollbarThumbPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    scrollSourceTo(sourceListRef.current?.scrollLeft ?? 0)
-    sourceScrollbarDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startScrollLeft: sourceListRef.current?.scrollLeft ?? 0,
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const handleSourceScrollbarThumbPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = sourceScrollbarDragRef.current
-    const sourceList = sourceListRef.current
-    const track = event.currentTarget.parentElement
-    if (!drag || drag.pointerId !== event.pointerId || !sourceList || !track) return
-    const thumbWidth = track.clientWidth * (sourceThumbWidth / 100)
-    const travel = Math.max(1, track.clientWidth - thumbWidth)
-    scrollSourceTo(drag.startScrollLeft + ((event.clientX - drag.startX) / travel) * sourceMaxScroll)
-  }
-
-  const handleSourceScrollbarThumbPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (sourceScrollbarDragRef.current?.pointerId !== event.pointerId) return
-    sourceScrollbarDragRef.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  const handleSourceScrollbarKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const sourceList = sourceListRef.current
-    if (!sourceList) return
-    const step = Math.max(48, Math.round(sourceList.clientWidth * 0.25))
-    if (event.key === 'ArrowLeft') scrollSourceTo(sourceScrollTargetRef.current - step, 'smooth')
-    else if (event.key === 'ArrowRight') scrollSourceTo(sourceScrollTargetRef.current + step, 'smooth')
-    else if (event.key === 'Home') scrollSourceTo(0, 'smooth')
-    else if (event.key === 'End') scrollSourceTo(sourceMaxScroll, 'smooth')
-    else return
-    event.preventDefault()
-  }
+  const selectedSource = sourceFilter === 'all' ? undefined : sources.find((source) => source.id === sourceFilter)
 
   return (
     <div className="app-shell">
-      <aside className="nav-rail" aria-label="Primary navigation">
+      <aside className="nav-rail" aria-label={t('nav.primary')}>
         <div className="brand-mark"><img src="/app-icon.png" alt="IPTV Player" /></div>
         <nav>
-          <button className={view === 'library' ? 'active' : ''} onClick={() => resetFilters('library')}><ListVideo size={21} /><span>Library</span></button>
-          <button className={view === 'favorites' ? 'active' : ''} onClick={() => resetFilters('favorites')}><Heart size={21} /><span>Favorites</span></button>
-          <button className={view === 'recent' ? 'active' : ''} onClick={() => resetFilters('recent')}><Clock3 size={21} /><span>Recent</span></button>
+          <button className={view === 'library' ? 'active' : ''} onClick={() => resetFilters('library')}><ListVideo size={21} /><span>{t('nav.library')}</span></button>
+          <button className={view === 'favorites' ? 'active' : ''} onClick={() => resetFilters('favorites')}><Heart size={21} /><span>{t('nav.favorites')}</span></button>
+          <button className={view === 'recent' ? 'active' : ''} onClick={() => resetFilters('recent')}><Clock3 size={21} /><span>{t('nav.recent')}</span></button>
         </nav>
       </aside>
 
       <main className="main-content">
         <header className="top-bar">
           <div>
-            <span className="eyebrow">Local-first web player</span>
+            <span className="eyebrow">{t('app.localFirst')}</span>
             <h1>IPTV Player</h1>
           </div>
-          <Button className="primary-button add-desktop" isDisabled={!storageReady} onPress={() => setImportOpen(true)}><Plus size={18} /> Add source</Button>
+          <div className="top-actions">
+            <Button className="secondary-button settings-button" onPress={() => setSettingsOpen(true)} aria-label={t('settings.open')}><SettingsIcon size={18} /><span>{t('settings.title')}</span></Button>
+            <Button className="primary-button add-desktop" isDisabled={!storageReady} onPress={() => setImportOpen(true)}><Plus size={18} /> {t('actions.addSource')}</Button>
+          </div>
         </header>
 
         <div className="content-grid">
@@ -459,70 +393,79 @@ export default function App() {
           <section className="library-panel">
             <div className="library-heading">
               <div>
-                <span className="eyebrow">{view}</span>
-                <h2>{view === 'library' ? 'Channels' : view === 'favorites' ? 'Favorites' : 'Recently played'}</h2>
+                <span className="eyebrow">{t(`views.${view}`)}</span>
+                <h2>{view === 'library' ? t('headings.channels') : view === 'favorites' ? t('headings.favorites') : t('headings.recent')}</h2>
               </div>
               <Chip className="count-chip" size="sm" variant="soft">{visibleChannels.length.toLocaleString()}</Chip>
             </div>
 
             <label className="search-box">
               <Search size={18} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search channels" />
-              {query && <button onClick={() => setQuery('')} aria-label="Clear search">×</button>}
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('search.channels')} />
+              {query && <button onClick={() => setQuery('')} aria-label={t('actions.clearSearch')}>×</button>}
             </label>
 
             {sources.length > 0 && view === 'library' && (
-              <div className="source-strip" aria-label="Sources">
-                <button className={sourceFilter === 'all' ? 'active' : ''} onClick={() => { setSourceFilter('all'); setGroup('All') }}>All sources</button>
-                <div className="source-scroll-area">
-                  <div className="source-list" ref={sourceListRef}>
+              <div className="source-picker" ref={sourceDropdownRef}>
+                <button
+                  type="button"
+                  className={`source-picker-trigger ${sourceDropdownOpen ? 'open' : ''}`}
+                  aria-haspopup="menu"
+                  aria-expanded={sourceDropdownOpen}
+                  onClick={() => setSourceDropdownOpen((open) => !open)}
+                >
+                  {selectedSource ? (selectedSource.kind === 'playlist' ? <ListVideo size={16} /> : <RadioTower size={16} />) : <ListVideo size={16} />}
+                  <span>{selectedSource?.name ?? t('source.all')}</span>
+                  <em>{selectedSource ? (selectedSource.kind === 'playlist' ? selectedSource.channels.length : '1') : allChannels.length}</em>
+                  <ChevronDown className="source-picker-chevron" size={17} />
+                </button>
+
+                {sourceDropdownOpen && (
+                  <div className="source-picker-menu" role="menu" aria-label={t('source.sources')}>
+                    <button
+                      type="button"
+                      className={`source-picker-option ${sourceFilter === 'all' ? 'active' : ''}`}
+                      role="menuitemradio"
+                      aria-checked={sourceFilter === 'all'}
+                      onClick={() => selectSource('all')}
+                    >
+                      <ListVideo size={16} />
+                      <span>{t('source.all')}</span>
+                      <em>{allChannels.length}</em>
+                      {sourceFilter === 'all' && <Check className="source-picker-check" size={16} />}
+                    </button>
+
                     {sources.map((source) => (
-                      <div
-                        key={source.id}
-                        className={`source-chip-wrap ${sourceFilter === source.id ? 'active' : ''}`}
-                      >
-                        <button className="source-chip-main" onClick={() => { setSourceFilter(source.id); setGroup('All') }}>
-                          {source.kind === 'playlist' ? <ListVideo size={15} /> : <RadioTower size={15} />}
+                      <div key={source.id} className={`source-picker-row ${sourceFilter === source.id ? 'active' : ''}`}>
+                        <button
+                          type="button"
+                          className="source-picker-option"
+                          role="menuitemradio"
+                          aria-checked={sourceFilter === source.id}
+                          onClick={() => selectSource(source.id)}
+                        >
+                          {source.kind === 'playlist' ? <ListVideo size={16} /> : <RadioTower size={16} />}
                           <span>{source.name}</span>
                           <em>{source.kind === 'playlist' ? source.channels.length : '1'}</em>
+                          {sourceFilter === source.id && <Check className="source-picker-check" size={16} />}
                         </button>
-                        {source.origin === 'url' && source.kind === 'playlist' && (
-                          <button className="source-action" disabled={refreshingSourceId === source.id} onClick={() => void refreshSource(source)} aria-label={`Refresh ${source.name}`}>
-                            <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
+                        <div className="source-picker-actions">
+                          {source.origin === 'url' && source.kind === 'playlist' && (
+                            <button className="source-action" type="button" disabled={refreshingSourceId === source.id} onClick={() => { setSourceDropdownOpen(false); void refreshSource(source) }} aria-label={t('actions.refresh', { name: source.name })}>
+                              <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
+                            </button>
+                          )}
+                          <button className="source-rename" type="button" onClick={() => openRenameDialog(source.id)} aria-label={t('actions.rename', { name: source.name })}>
+                            <Pencil size={15} />
                           </button>
-                        )}
-                        <button className="source-rename" onClick={() => openRenameDialog(source.id)} aria-label={`Rename ${source.name}`}>
-                          <Pencil size={15} />
-                        </button>
-                        <button className="source-delete" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.name}`}><Trash2 size={14} /></button>
+                          <button className="source-delete" type="button" onClick={() => removeSource(source.id)} aria-label={t('actions.remove', { name: source.name })}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                  {sourceMaxScroll > 0 && (
-                    <div
-                      className="source-scrollbar"
-                      role="scrollbar"
-                      aria-label="Playlist sources"
-                      aria-valuemin={0}
-                      aria-valuemax={sourceMaxScroll}
-                      aria-valuenow={Math.round(sourceScrollMetrics.scrollLeft)}
-                      tabIndex={0}
-                      onKeyDown={handleSourceScrollbarKeyDown}
-                      onPointerDown={handleSourceScrollbarTrackPointerDown}
-                    >
-                      <div
-                        className="source-scrollbar-thumb"
-                        aria-hidden="true"
-                        style={{ width: `${sourceThumbWidth}%`, left: `${sourceThumbLeft}%` }}
-                        onPointerDown={handleSourceScrollbarThumbPointerDown}
-                        onPointerMove={handleSourceScrollbarThumbPointerMove}
-                        onPointerUp={handleSourceScrollbarThumbPointerUp}
-                        onPointerCancel={handleSourceScrollbarThumbPointerUp}
-                        onLostPointerCapture={handleSourceScrollbarThumbPointerUp}
-                      />
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             )}
 
@@ -533,40 +476,43 @@ export default function App() {
             )}
 
             {!storageReady ? (
-              <div className="list-empty"><span className="loader" /><strong>Loading library</strong></div>
+              <div className="list-empty"><span className="loader" /><strong>{t('library.loading')}</strong></div>
             ) : allChannels.length === 0 ? (
               <div className="first-run">
                 <div className="first-run-icon"><img src="/app-icon.png" alt="" /></div>
-                <h3>Add your first source</h3>
-                <p>Open an M3U or M3U8 URL, upload an IPTV playlist, or paste playlist text. Your library stays in this browser.</p>
-                <Button className="primary-button" onPress={() => setImportOpen(true)}><Plus size={18} /> Add source</Button>
+                <h3>{t('firstRun.title')}</h3>
+                <p>{t('firstRun.description')}</p>
+                <Button className="primary-button" onPress={() => setImportOpen(true)}><Plus size={18} /> {t('actions.addSource')}</Button>
+                <a className="external-source-link" href="https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md" target="_blank" rel="noreferrer noopener">
+                  <ExternalLink size={16} /> {t('source.findPublic')}
+                </a>
               </div>
             ) : (
-              <ChannelList channels={visibleChannels} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} onRenameSource={openRenameDialog} onOpenContextMenu={openSourceContextMenu} />
+              <ChannelList channels={visibleChannels} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} onRenameChannel={openChannelRenameDialog} onOpenContextMenu={openChannelContextMenu} />
             )}
           </section>
         </div>
       </main>
 
-      <button className="mobile-fab" disabled={!storageReady} onClick={() => setImportOpen(true)} aria-label="Add source"><Plus size={24} /></button>
-      <nav className="bottom-nav" aria-label="Mobile navigation">
-        <button className={view === 'library' ? 'active' : ''} onClick={() => resetFilters('library')}><ListVideo size={20} /><span>Library</span></button>
-        <button className={view === 'favorites' ? 'active' : ''} onClick={() => resetFilters('favorites')}><Heart size={20} /><span>Favorites</span></button>
-        <button className={view === 'recent' ? 'active' : ''} onClick={() => resetFilters('recent')}><Clock3 size={20} /><span>Recent</span></button>
+      <button className="mobile-fab" disabled={!storageReady} onClick={() => setImportOpen(true)} aria-label={t('actions.addSource')}><Plus size={24} /></button>
+      <nav className="bottom-nav" aria-label={t('nav.mobile')}>
+        <button className={view === 'library' ? 'active' : ''} onClick={() => resetFilters('library')}><ListVideo size={20} /><span>{t('nav.library')}</span></button>
+        <button className={view === 'favorites' ? 'active' : ''} onClick={() => resetFilters('favorites')}><Heart size={20} /><span>{t('nav.favorites')}</span></button>
+        <button className={view === 'recent' ? 'active' : ''} onClick={() => resetFilters('recent')}><Clock3 size={20} /><span>{t('nav.recent')}</span></button>
       </nav>
 
-      {sourceContextMenu && sources.some((source) => source.id === sourceContextMenu.sourceId) && (
+      {channelContextMenu && channelMap.has(channelContextMenu.channelId) && (
         <div
           className="source-context-menu"
-          data-source-context-menu
+          data-channel-context-menu
           role="menu"
           style={{
-            left: Math.min(sourceContextMenu.x, Math.max(8, window.innerWidth - 180)),
-            top: Math.min(sourceContextMenu.y, Math.max(8, window.innerHeight - 62)),
+            left: Math.min(channelContextMenu.x, Math.max(8, window.innerWidth - 180)),
+            top: Math.min(channelContextMenu.y, Math.max(8, window.innerHeight - 62)),
           }}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button role="menuitem" onClick={() => openRenameDialog(sourceContextMenu.sourceId)}><Pencil size={16} /> Rename source</button>
+          <button role="menuitem" onClick={() => openChannelRenameDialog(channelContextMenu.channelId)}><Pencil size={16} /> {t('context.renameChannel')}</button>
         </div>
       )}
 
@@ -576,6 +522,14 @@ export default function App() {
         currentName={sources.find((source) => source.id === renameSourceId)?.name ?? ''}
         onClose={() => setRenameSourceId(null)}
         onRename={(name) => renameSourceId && renameSource(renameSourceId, name)}
+      />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <RenameDialog
+        open={renameChannelId !== null}
+        currentName={channelMap.get(renameChannelId ?? '')?.name ?? ''}
+        entityLabel="channel"
+        onClose={() => setRenameChannelId(null)}
+        onRename={(name) => renameChannelId && renameChannel(renameChannelId, name)}
       />
       {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </div>

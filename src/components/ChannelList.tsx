@@ -1,6 +1,7 @@
 import { Heart, Pencil, Play, Radio, SearchX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { useSettings } from '../lib/i18n'
 import type { Channel } from '../types/iptv'
 
 const PAGE_SIZE = 200
@@ -11,7 +12,7 @@ export function ChannelList({
   favorites,
   onPlay,
   onToggleFavorite,
-  onRenameSource,
+  onRenameChannel,
   onOpenContextMenu,
 }: {
   channels: Channel[]
@@ -19,9 +20,10 @@ export function ChannelList({
   favorites: Set<string>
   onPlay: (channel: Channel) => void
   onToggleFavorite: (channel: Channel) => void
-  onRenameSource?: (sourceId: string) => void
-  onOpenContextMenu?: (event: ReactMouseEvent<HTMLElement>, sourceId: string) => void
+  onRenameChannel?: (channelId: string) => void
+  onOpenContextMenu?: (event: ReactMouseEvent<HTMLElement>, channelId: string) => void
 }) {
+  const { t } = useSettings()
   const [limit, setLimit] = useState(PAGE_SIZE)
 
   useEffect(() => setLimit(PAGE_SIZE), [channels])
@@ -30,8 +32,8 @@ export function ChannelList({
     return (
       <div className="list-empty">
         <SearchX size={26} />
-        <strong>No channels found</strong>
-        <span>Try another search or group.</span>
+        <strong>{t('channels.none')}</strong>
+        <span>{t('channels.noneHint')}</span>
       </div>
     )
   }
@@ -48,7 +50,7 @@ export function ChannelList({
             key={channel.id}
             className={`channel-row ${active ? 'active' : ''}`}
             onContextMenuCapture={(event) => {
-              if (channel.sourceId && onOpenContextMenu) onOpenContextMenu(event, channel.sourceId)
+              if (onOpenContextMenu) onOpenContextMenu(event, channel.id)
             }}
           >
             <button className="channel-main" onClick={() => onPlay(channel)}>
@@ -59,16 +61,16 @@ export function ChannelList({
               </div>
               <div className="channel-copy">
                 <strong>{channel.name}</strong>
-                <span>{channel.group || 'Ungrouped'}</span>
+                <span>{channel.group || t('channels.ungrouped')}</span>
               </div>
-              {active && <span className="playing-badge"><i /> Playing</span>}
+              {active && <span className="playing-badge"><i /> {t('channels.playing')}</span>}
             </button>
-            {channel.sourceId && onRenameSource && (
-              <button className="channel-rename-button" onClick={() => onRenameSource(channel.sourceId!)} aria-label={`Rename source for ${channel.name}`}>
+            {onRenameChannel && (
+              <button className="channel-rename-button" onClick={() => onRenameChannel(channel.id)} aria-label={t('channels.rename', { name: channel.name })}>
                 <Pencil size={17} />
               </button>
             )}
-            <button className={`favorite-button ${favorite ? 'selected' : ''}`} onClick={() => onToggleFavorite(channel)} aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}>
+            <button className={`favorite-button ${favorite ? 'selected' : ''}`} onClick={() => onToggleFavorite(channel)} aria-label={favorite ? t('channels.removeFavorite') : t('channels.addFavorite')}>
               <Heart size={19} fill={favorite ? 'currentColor' : 'none'} />
             </button>
           </article>
@@ -76,8 +78,8 @@ export function ChannelList({
       })}
       {limit < channels.length && (
         <button className="load-more" onClick={() => setLimit((value) => value + PAGE_SIZE)}>
-          Show {Math.min(PAGE_SIZE, channels.length - limit)} more
-          <span>{limit.toLocaleString()} of {channels.length.toLocaleString()}</span>
+          {t('channels.showMore', { count: Math.min(PAGE_SIZE, channels.length - limit) })}
+          <span>{t('channels.of', { shown: limit.toLocaleString(), total: channels.length.toLocaleString() })}</span>
         </button>
       )}
     </div>
