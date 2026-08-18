@@ -45,6 +45,10 @@ const protocolIssue = (channel?: Channel) => {
 }
 
 type SafariVideo = HTMLVideoElement & {
+  webkitSupportsFullscreen?: boolean
+  webkitDisplayingFullscreen?: boolean
+  webkitEnterFullscreen?: () => void
+  webkitExitFullscreen?: () => void
   webkitSupportsPresentationMode?: (mode: string) => boolean
   webkitSetPresentationMode?: (mode: string) => void
   webkitPresentationMode?: string
@@ -74,10 +78,22 @@ export function Player({ channel }: { channel?: Channel }) {
   }, [channel?.id])
 
   useEffect(() => {
-    const onFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', onFullscreen)
-    return () => document.removeEventListener('fullscreenchange', onFullscreen)
-  }, [])
+    const video = videoRef.current as SafariVideo | null
+    const syncFullscreenState = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement) || Boolean(video?.webkitDisplayingFullscreen))
+    }
+
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    video?.addEventListener('webkitbeginfullscreen', syncFullscreenState)
+    video?.addEventListener('webkitendfullscreen', syncFullscreenState)
+    syncFullscreenState()
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+      video?.removeEventListener('webkitbeginfullscreen', syncFullscreenState)
+      video?.removeEventListener('webkitendfullscreen', syncFullscreenState)
+    }
+  }, [channel?.id, videoRef])
 
   useEffect(() => {
     if (!playing) return
@@ -113,9 +129,31 @@ export function Player({ channel }: { channel?: Channel }) {
   }
 
   const toggleFullscreen = async () => {
-    if (!playerRef.current) return
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await playerRef.current.requestFullscreen()
+    const video = videoRef.current as SafariVideo | null
+    const player = playerRef.current
+    if (!video || !player) return
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+        return
+      }
+
+      if (video.webkitDisplayingFullscreen) {
+        video.webkitExitFullscreen?.()
+        return
+      }
+
+      // iPhone Safari only exposes fullscreen for the video element, not its wrapper.
+      if (video.webkitEnterFullscreen && video.webkitSupportsFullscreen !== false) {
+        video.webkitEnterFullscreen()
+        return
+      }
+
+      if (player.requestFullscreen) await player.requestFullscreen()
+    } catch {
+      setShowControls(true)
+    }
   }
 
   const togglePip = async () => {
