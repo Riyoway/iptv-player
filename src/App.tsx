@@ -545,7 +545,7 @@ export default function App() {
                       <ListVideo size={17} />
                       <span>{t('source.all')}</span>
                       <em>{allChannels.length}</em>
-                      {sourceFilter === 'all' && <Check className="source-picker-check" size={16} />}
+                      {sourceFilter === 'all' && <Check className="source-picker-check" size={18} />}
                     </button>
 
                     {sources.map((source) => (
@@ -560,19 +560,19 @@ export default function App() {
                           {source.kind === 'playlist' ? <ListVideo size={17} /> : <RadioTower size={17} />}
                           <span>{source.name}</span>
                           <em>{source.kind === 'playlist' ? source.channels.length : '1'}</em>
-                          {sourceFilter === source.id && <Check className="source-picker-check" size={16} />}
+                          {sourceFilter === source.id && <Check className="source-picker-check" size={18} />}
                         </button>
                         <div className="source-picker-actions">
                           {source.origin === 'url' && source.kind === 'playlist' && (
                             <button className="source-action" type="button" disabled={refreshingSourceId === source.id} onClick={() => { setSourceDropdownOpen(false); void refreshSource(source) }} aria-label={t('actions.refresh', { name: source.name })}>
-                              <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={14} />
+                              <RefreshCw className={refreshingSourceId === source.id ? 'spinning' : ''} size={16} />
                             </button>
                           )}
                           <button className="source-rename" type="button" onClick={() => openRenameDialog(source.id)} aria-label={t('actions.rename', { name: source.name })}>
-                            <Pencil size={15} />
+                            <Pencil size={17} />
                           </button>
                           <button className="source-delete" type="button" onClick={() => removeSource(source.id)} aria-label={t('actions.remove', { name: source.name })}>
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
