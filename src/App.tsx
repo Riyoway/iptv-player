@@ -207,7 +207,6 @@ export default function App() {
       startScrollLeft: event.currentTarget.scrollLeft,
       moved: false,
     }
-    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   const moveGroupStripDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -217,6 +216,7 @@ export default function App() {
     const deltaX = event.clientX - drag.startX
     const deltaY = event.clientY - drag.startY
     if (!drag.moved && (Math.abs(deltaX) < 4 || Math.abs(deltaX) <= Math.abs(deltaY))) return
+    if (!drag.moved) event.currentTarget.setPointerCapture(event.pointerId)
     drag.moved = true
     event.preventDefault()
     event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX
