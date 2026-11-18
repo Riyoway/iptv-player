@@ -23,7 +23,7 @@ import { RenameDialog } from './components/RenameDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { createImportResult, getChannelGroups, looksLikeHlsManifest, looksLikeM3uPlaylist, parseM3u, titleFromUrl } from './lib/m3u'
 import { checkStreams } from './lib/streamChecker'
-import { loadFavorites, loadHideInvalidStreams, loadHistory, loadSources, saveFavorites, saveHideInvalidStreams, saveHistory, saveSources } from './lib/storage'
+import { loadFavorites, loadHideInvalidStreams, loadHistory, loadLibrary, saveFavorites, saveHideInvalidStreams, saveHistory, saveLibrary, subscribeToLibraryChanges } from './lib/storage'
 import { useSettings } from './lib/i18n'
 import type { Channel, PlaylistSource } from './types/iptv'
 
@@ -107,21 +107,40 @@ export default function App() {
   const groupStripDragRef = useRef<GroupStripDrag | null>(null)
   const suppressGroupClickRef = useRef(false)
   const streamCheckAbortRef = useRef<AbortController | null>(null)
+  const persistedRef = useRef<{ sources: PlaylistSource[]; favorites: Set<string>; history: string[] } | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    void loadSources().then((saved) => {
-      if (!cancelled) {
-        setSources(saved)
-        setStorageReady(true)
+    const load = () => loadLibrary().then(({ library, ok }) => {
+      if (cancelled) return
+      // A failed read must not replace what is on screen or be saved back as an empty library.
+      if (ok) {
+        const loaded = { sources: library.sources, favorites: new Set(library.favorites), history: library.history }
+        persistedRef.current = loaded
+        setSources(loaded.sources)
+        setFavorites(loaded.favorites)
+        setHistory(loaded.history)
       }
+      setStorageReady(true)
     })
-    return () => { cancelled = true }
+    void load()
+    // Saved elsewhere (another tab or browser): adopt it instead of later overwriting it with this tab's copy.
+    const unsubscribe = subscribeToLibraryChanges(() => { void load() })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
-    if (storageReady) void saveSources(sources)
-  }, [sources, storageReady])
+    if (!storageReady) return
+    const persisted = persistedRef.current
+    persistedRef.current = { sources, favorites, history }
+    // Only write changes made in this tab. What was just read from storage is already there,
+    // and after a failed read the first state seen is never written back.
+    if (!persisted || (persisted.sources === sources && persisted.favorites === favorites && persisted.history === history)) return
+    void saveLibrary({ sources, favorites: [...favorites], history })
+  }, [sources, favorites, history, storageReady])
   useEffect(() => saveFavorites(favorites), [favorites])
   useEffect(() => saveHistory(history), [history])
   useEffect(() => saveHideInvalidStreams(hideInvalidStreams), [hideInvalidStreams])
@@ -399,6 +418,26 @@ export default function App() {
     }
   }
 
+  const removeInvalidStreams = () => {
+    const ids = new Set(allChannels.filter((channel) => channel.streamCheck?.status === 'unavailable').map((channel) => channel.id))
+    if (!ids.size) return
+    setSources((previous) => previous
+      .map((source) => source.channels.some((channel) => ids.has(channel.id))
+        ? { ...source, channels: source.channels.filter((channel) => !ids.has(channel.id)) }
+        : source)
+      .filter((source) => source.channels.length > 0))
+    setFavorites((previous) => new Set([...previous].filter((channelId) => !ids.has(channelId))))
+    setHistory((previous) => previous.filter((channelId) => !ids.has(channelId)))
+    if (currentId && ids.has(currentId)) setCurrentId(undefined)
+    if (sourceFilter !== 'all' && sources.find((source) => source.id === sourceFilter)?.channels.every((channel) => ids.has(channel.id))) {
+      setSourceFilter('all')
+      setGroup('All')
+    }
+    setChannelContextMenu(null)
+    setToast(t('toast.invalidRemoved', { count: ids.size }))
+    window.setTimeout(() => setToast(null), 2400)
+  }
+
   const removeSource = (id: string) => {
     const source = sources.find((item) => item.id === id)
     if (!source) return
@@ -610,7 +649,7 @@ export default function App() {
                 </a>
               </div>
             ) : (
-              <ChannelList channels={visibleChannels} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} onRenameChannel={openChannelRenameDialog} onOpenContextMenu={openChannelContextMenu} />
+              <ChannelList channels={visibleChannels} resetKey={`${view}|${sourceFilter}|${group}|${deferredQuery}`} currentId={currentId} favorites={favorites} onPlay={play} onToggleFavorite={toggleFavorite} onRenameChannel={openChannelRenameDialog} onOpenContextMenu={openChannelContextMenu} />
             )}
           </section>
         </div>
@@ -653,6 +692,8 @@ export default function App() {
         checkProgress={streamCheckProgress}
         onCheckStreams={() => { void checkAllStreams() }}
         onCancelCheck={stopStreamCheck}
+        invalidCount={hiddenInvalidCount}
+        onRemoveInvalid={removeInvalidStreams}
       />
       <RenameDialog
         open={renameChannelId !== null}

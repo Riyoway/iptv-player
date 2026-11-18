@@ -1,5 +1,5 @@
 import { Button } from '@heroui/react'
-import { Check, ChevronDown, EyeOff, Languages, Monitor, Moon, ScanSearch, Settings as SettingsIcon, Sun, X } from 'lucide-react'
+import { Check, ChevronDown, EyeOff, Languages, Monitor, Moon, ScanSearch, Settings as SettingsIcon, Sun, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSettings, languageOptions, themeOptions, type LanguagePreference, type ThemePreference } from '../lib/i18n'
 
@@ -136,6 +136,8 @@ export function SettingsDialog({
   checkProgress,
   onCheckStreams,
   onCancelCheck,
+  invalidCount,
+  onRemoveInvalid,
 }: {
   open: boolean
   onClose: () => void
@@ -144,6 +146,8 @@ export function SettingsDialog({
   checkProgress: StreamCheckProgress
   onCheckStreams: () => void
   onCancelCheck: () => void
+  invalidCount: number
+  onRemoveInvalid: () => void
 }) {
   const { languagePreference, themePreference, setLanguagePreference, setThemePreference, t } = useSettings()
 
@@ -237,6 +241,17 @@ export function SettingsDialog({
             </div>
             <Button className="secondary-button settings-action-button" onPress={checkProgress ? onCancelCheck : onCheckStreams}>
               {checkProgress ? <><span className="button-loader" /> {t('settings.cancelCheck')}</> : <><ScanSearch size={16} /> {t('settings.check')}</>}
+            </Button>
+          </div>
+
+          <div className="settings-row settings-row-action">
+            <div className="settings-row-icon"><Trash2 size={19} /></div>
+            <div className="settings-row-copy">
+              <label>{t('settings.removeInvalid')}</label>
+              <p>{t('settings.removeInvalidHint')}</p>
+            </div>
+            <Button className="secondary-button settings-action-button" isDisabled={invalidCount === 0 || checkProgress !== null} onPress={onRemoveInvalid}>
+              <Trash2 size={16} /> {t('settings.removeInvalidAction', { count: invalidCount })}
             </Button>
           </div>
         </div>
