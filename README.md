@@ -87,7 +87,9 @@ No public CORS proxy is bundled because routing private IPTV credentials or URLs
 
 ## Privacy
 
-Playlist files are parsed in the browser. Saved sources are stored in IndexedDB; favorites and recent history are stored in `localStorage`. This project does not include analytics or a backend.
+Playlist files are parsed in the browser. Saved sources are stored in IndexedDB; favorites and recent history are stored in `localStorage`. This project does not include analytics or a hosted backend.
+
+When you run the app yourself with `npm run dev` or `npm run preview`, the library (sources, favorites, history) is also written to `data/library.json` on your own disk. That file is shared by every browser on the machine and survives cleared browser data. One backup per day is kept in `data/backups/` for 14 days. Set `IPTV_DATA_DIR` to store it elsewhere. The static deployment has no such file and relies on browser storage alone.
 
 Remote stream servers will still receive normal network requests from your browser when you load their content.
 

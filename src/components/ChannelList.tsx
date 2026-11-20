@@ -11,6 +11,7 @@ export function ChannelList({
   channels,
   currentId,
   favorites,
+  resetKey,
   onPlay,
   onToggleFavorite,
   onRenameChannel,
@@ -19,6 +20,8 @@ export function ChannelList({
   channels: Channel[]
   currentId?: string
   favorites: Set<string>
+  /** Changes when the user switches to a different list (view, source, group or search). */
+  resetKey?: string
   onPlay: (channel: Channel) => void
   onToggleFavorite: (channel: Channel) => void
   onRenameChannel?: (channelId: string) => void
@@ -27,7 +30,9 @@ export function ChannelList({
   const { t } = useSettings()
   const [limit, setLimit] = useState(PAGE_SIZE)
 
-  useEffect(() => setLimit(PAGE_SIZE), [channels])
+  // Collapse back to the first page only when a different list is shown, not when
+  // the same list changes (favoriting, renaming, stream checks).
+  useEffect(() => setLimit(PAGE_SIZE), [resetKey])
 
   if (!channels.length) {
     return (

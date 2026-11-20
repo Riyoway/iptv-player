@@ -8,3 +8,6 @@ dist/
 .idea/
 coverage/
 *.log
+
+# Local library database written by the dev/preview server
+data/
